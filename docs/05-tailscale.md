@@ -2,7 +2,7 @@
 
 Goal: Vector reaches our own wire-pod from any Wi-Fi network, without exposing wire-pod to the internet.
 
-Status: **experiment working (2026-11-09); not yet permanent**
+Status: **experiment worked, then reverted to LAN (2026-11-09). Next: permanent setup, hosted on the model server.**
 
 ## Feasibility (2026-11-09, read-only look)
 
@@ -50,6 +50,22 @@ What was done (all temporary or backed up; `<host>.<tailnet>.ts.net` = the wire-
 4. Restart the robot software **as a group**: `systemctl restart anki-robot.target`. Restarting `vic-cloud` alone leaves it endlessly retrying `/dev/socket/_switchboard_gateway_server_`, and restarting `vic-switchboard` too doesn't fix it.
 
 Result: "what time is it" → transcribed and answered by wire-pod over the tailnet.
+
+### Reverted to LAN (2026-11-09)
+
+To avoid a reboot leaving him voiceless, the experiment was rolled back the same day:
+- wire-pod host: self-signed LAN cert restored. The Tailscale cert/key are kept in the volume as `cert.*.tailscale`.
+- Robot: `server_config.json` and `wirepod-cert.crt` restored from `.lan-backup`, `/etc/hosts` overlay unmounted, `tailscale down`, transient unit stopped, `anki-robot.target` restarted.
+- Left in place on the robot: `/data/tailscale/` (binaries and node state, so it can rejoin without a new login). The node shows as offline in the tailnet admin.
+
+### Next: permanent, on the model server
+
+Move wire-pod to the machine that will run the models (currently being containerised) and do the permanent version there:
+1. Run wire-pod there (`wire-pod/run.sh`, plus boot-start via Quadlet/systemd), with the LLM endpoint on the same host.
+2. Get a `tailscale cert` for that host's MagicDNS name, and add renewal (timer) plus a wire-pod restart.
+3. Re-run wire-pod's SSH bot setup from the new host, then switch the robot's config to the new name.
+4. On the robot: start Tailscale and the hosts entry **at boot** from `/data` (find a WireOS-supported hook), with a tagged node and ACLs.
+5. Replace the shared SSH key first.
 
 ### Caveats before making it permanent
 
