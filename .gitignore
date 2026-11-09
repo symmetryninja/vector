@@ -1,5 +1,17 @@
-# Never commit the shared SSH root key or other secrets
+# Private, per-machine data: keys, Wi-Fi credentials, IPs, API keys
+local/
+.env
+.env.*
+!.env.example
+
+# Never commit the shared SSH root key or any other key
 ssh_root_key
 *.key
 *.pem
-.env
+id_*
+*_ed25519
+*_rsa
+
+# Firmware images and SDK config (contains bot certs/tokens)
+*.ota
+sdk_config.ini
