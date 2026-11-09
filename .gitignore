@@ -1,0 +1,5 @@
+# Never commit the shared SSH root key or other secrets
+ssh_root_key
+*.key
+*.pem
+.env
