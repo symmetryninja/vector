@@ -47,4 +47,10 @@ API keys are entered in wire-pod's web UI and stored on the wire-pod host, **not
 
 ## Findings
 
-_Record the setup that worked here (no keys, hostnames or IPs)._
+### 2026-11-09: first look (read-only)
+
+- WireOS (3.0.2.0) doesn't look for a local escape pod. Its server config, `/anki/data/assets/cozmo_resources/config/server_config.json`, points voice (`chipper`), settings (`jdocs`) and tokens (`tms`) at a **community-hosted server, `vicapi.pvic.xyz:8081`**. So after the wake word, audio goes to that server over the internet.
+- That server is reachable with a valid TLS certificate, but voice requests fail: the log shows `Got cloud error message type error`, then the "I don't know" animation. That's why he can't interact.
+- The file is on the read-only root (`/`), and an OTA would overwrite it. To confirm: the supported way to point WireOS at wire-pod (wire-pod's docs have a section for unlocked bots).
+- WireOS's own settings page (`:8080`) covers wake word, sensitivity, CPU profile, auto-update, faces and some settings, but has no voice-server or AI option.
+- Running wire-pod at home would also keep his microphone audio on the local network (see [01](01-security-check.md)).

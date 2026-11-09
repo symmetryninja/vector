@@ -48,4 +48,8 @@ A `wifi.env.example` with placeholder values can live in the repo.
 
 ## Findings
 
-_Record what worked here (no real SSIDs or passwords)._
+### 2026-11-09: first look (read-only)
+
+- ConnMan's saved networks live in **`/data/lib/connman/`**, one `wifi_<mac>_<hex-ssid>_managed_psk/` folder per network. `/data` is the writable user partition; the root filesystem is read-only.
+- The bot already had **three saved networks**, two of them dating from 2021. So saved networks survive OTA updates and the unlock, and web setup **adds** a network rather than replacing the old ones.
+- `connmanctl` is installed, so adding another network is a quick `connmanctl` session while that network is in range.
