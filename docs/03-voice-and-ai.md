@@ -95,6 +95,22 @@ Temporary test setup, until the models move to the home AI server (being contain
 - Moving to another model server later: change `endpoint` (and `model`) only.
 - Housekeeping: on this desktop Ollama is set to listen on all interfaces (`OLLAMA_HOST=0.0.0.0`, no auth). wire-pod only needs localhost. On the final server, bind it to localhost or restrict it to the wire-pod host.
 
-Still open:
+#### After a reboot of the wire-pod host
+
+Neither service starts at boot on the temporary desktop host (on purpose for now). Until they're running again, Vector hears "Hey Vector" but can't act on anything.
+
+```sh
+sudo systemctl start ollama     # the model server
+sudo podman start wire-pod      # existing container, keeps all settings
+```
+
+Check it's up: `sudo ss -tlnp | grep -E ':(443|8080) '` should show both ports. If 443 is missing, `sudo podman restart wire-pod`.
+
+`podman start` reuses the container. `wire-pod/run.sh` **recreates** it from the latest image. Settings survive either way (they're in the `wire-pod-data` volume), but only use `run.sh` to update or rebuild.
+
+To make both start at boot later: `sudo systemctl enable ollama`, and for the container, `podman generate systemd`/Quadlet (rootful), since Podman's `--restart` flag alone doesn't survive a host reboot.
+
+#### Still open
+
 - **Weather** needs a weatherapi.com or openweathermap.org key. It only sends the location you ask about, never audio.
 - **Face enrolment ("my name is …") fails.** The robot logs show `lost_enrollee` (he loses the face partway through) and once `SawWrongFace` (he matched an already-known face). That's a vision/enrolment problem on the robot, not wire-pod. Retry in good light, ~30–50 cm away, facing him and holding still. If it keeps saying you're someone else, an old enrolled face may need removing.
