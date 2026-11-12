@@ -11,6 +11,8 @@ set -euo pipefail
 
 IMAGE="${WIREPOD_IMAGE:-ghcr.io/kercre123/wire-pod:main}"
 ENGINE="${CONTAINER_ENGINE:-podman}"
+# Web UI port; change it if 8080 is taken on this host. The robot only uses 80 and 443.
+WEB_PORT="${WIREPOD_WEB_PORT:-8080}"
 
 sudo "$ENGINE" pull "$IMAGE"
 sudo "$ENGINE" rm -f wire-pod 2>/dev/null || true
@@ -19,8 +21,9 @@ sudo "$ENGINE" run -d \
   --network host \
   --restart unless-stopped \
   -e WIREPOD_DATA_DIR=/data \
+  -e WEBSERVER_PORT="$WEB_PORT" \
   -v wire-pod-data:/data \
   -v wire-pod-images:/images \
   "$IMAGE"
 
-echo "wire-pod started. Web UI: http://$(hostname -I | awk '{print $1}'):8080"
+echo "wire-pod started. Web UI: http://$(hostname -I | awk '{print $1}'):$WEB_PORT"

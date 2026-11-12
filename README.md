@@ -4,6 +4,7 @@ Notes, config and scripts for an Anki Vector robot running WireOS (community fir
 
 - [docs/](docs/README.md): goals and how-tos (security, Wi-Fi, voice/AI, flashing and deploying)
 - [HISTORY.md](HISTORY.md): dated log of what has been done
+- [justfile](justfile): commands for everything in the docs. Run `just` to list them. Settings come from environment variables or `local/.env` (see [env.example](env.example)).
 
 ## Setup so far
 

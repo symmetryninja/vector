@@ -40,3 +40,9 @@ Technical detail lives in [docs/](docs/README.md). No keys, passwords, network n
 - 17:00: Looked at whether Tailscale Funnel could safely expose wire-pod to the internet. Decided against it: wire-pod has no login, and its web UI can drive the robot and show his camera. Better to put Vector on the tailnet itself. Notes in the Tailscale doc.
 - 17:35–17:55: Tailscale experiment. Put Vector on the tailnet (approved in the browser). Pointing him at the desktop's tailnet address first failed because wire-pod's certificate only covered its home-network address. Switched to the desktop's Tailscale name with a proper Let's Encrypt certificate from Tailscale, and he answered "what time is it" over the tailnet. Tailscale costs him about 25 MB of memory. It's all temporary for now: a reboot of Vector would undo the Tailscale side but leave his config pointing at the tailnet name.
 - 18:00: Rolled the Tailscale experiment back so a reboot can't leave Vector voiceless. He's back on the home network setup and Tailscale is stopped on him. Decided the permanent version will be built on the machine that will run the AI models, once that's ready, with wire-pod moving there too.
+
+## 2026-11-12
+
+- Stopped wire-pod on the desktop (Vector has no voice until it's started again; Ollama is still running).
+- Added a `justfile` with commands for everything so far: robot status/logs/SSH, cloud voice off/on, auto-update, Wi-Fi, flashing without the website, wire-pod (start/stop/first-time setup/bot setup/AI), Ollama, and the Tailscale experiment. Private settings come from a gitignored `local/.env`.
+- While testing it, found that another container on the desktop now uses port 8080, which wire-pod's web UI needs. wire-pod's UI port is now configurable. Vector wasn't reachable on the network at the time, so the robot commands were only checked as far as connecting.

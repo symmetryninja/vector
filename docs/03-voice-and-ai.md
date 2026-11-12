@@ -97,6 +97,10 @@ Temporary test setup, until the models move to the home AI server (being contain
 
 #### After a reboot of the wire-pod host
 
+Shortcut: `just up` (and `just down`). `just wirepod-status` shows which ports wire-pod holds.
+
+**Port clash:** wire-pod's web UI defaults to 8080. If something else on the host already uses it, wire-pod's UI can't start. Set `WIREPOD_WEB_PORT` (e.g. in `local/.env`) and recreate the container with `just wirepod-run`; settings are kept in the volume. The robot only uses 80 and 443.
+
 Neither service starts at boot on the temporary desktop host (on purpose for now). Until they're running again, Vector hears "Hey Vector" but can't act on anything.
 
 ```sh
