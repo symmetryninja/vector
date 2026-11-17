@@ -46,3 +46,11 @@ Technical detail lives in [docs/](docs/README.md). No keys, passwords, network n
 - Stopped wire-pod on the desktop (Vector has no voice until it's started again; Ollama is still running).
 - Added a `justfile` with commands for everything so far: robot status/logs/SSH, cloud voice off/on, auto-update, Wi-Fi, flashing without the website, wire-pod (start/stop/first-time setup/bot setup/AI), Ollama, and the Tailscale experiment. Private settings come from a gitignored `local/.env`.
 - While testing it, found that another container on the desktop now uses port 8080, which wire-pod's web UI needs. wire-pod's UI port is now configurable. Vector wasn't reachable on the network at the time, so the robot commands were only checked as far as connecting.
+
+## 2026-11-18
+
+- Checked whether Vector's Tailscale is persistent: it isn't. It's installed on him but not running or starting at boot, and he shows offline in the tailnet (his node key expires May 2027). His voice doesn't depend on it.
+- Fixed a bug in `just ssh` where part of a command could run on the desktop instead of on Vector.
+- Wrote up the permanent "voice and LLM over Tailscale" setup as a planned session (doc 06), to run once the model server's container migration is done.
+- Refreshed the README and every doc status to match reality, and added a CLAUDE.md so anyone using Claude Code with this repo gets the safety rules and conventions up front.
+- Looked into reusing Vector's animations on a self-built robot: Digital Dream Labs' licence only allows them on real Vectors, so a custom robot needs its own animations.

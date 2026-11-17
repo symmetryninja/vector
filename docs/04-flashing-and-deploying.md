@@ -2,7 +2,7 @@
 
 Goal: update firmware, and later deploy our own code, from a terminal on this machine instead of web setup in Chrome.
 
-Status: **not started**
+Status: **commands ready, not yet used**: `just flash-url <url>` (method A) and `just flash-file <file.ota>` (serves it locally and prints its checksum).
 
 There are three levels. Each needs less of the website than the one before.
 

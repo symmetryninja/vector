@@ -2,12 +2,12 @@
 
 Goal: let Vector join more than one known network (for example home and a second location) without re-running web setup.
 
-Status: **not started**
+Status: **not started**. Saved networks already persist (three found). Adding one: `just wifi-add`.
 
 ## Background
 
 - Vector's networking uses **ConnMan** with **wpa_supplicant** underneath. WireOS keeps older versions of both.
-- Web setup and BLE setup only set **one** network at a time. Each run replaces the previous one.
+- Web setup and BLE setup set **one** network per run. Each run *adds* it to the saved list: the robot had three saved networks from different setups (see Findings).
 - ConnMan can remember several networks and joins whichever saved network is in range. That should let us add extras by hand.
 - **No WPA3/SAE**: WireOS can see SAE networks but can't join them. Use WPA2, or WPA2/WPA3 mixed mode.
 

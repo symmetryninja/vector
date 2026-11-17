@@ -2,7 +2,7 @@
 
 Goal: talk to Vector properly. He should answer questions and hold a conversation using an AI service we choose, with our own API key.
 
-Status: **working (2026-11-09): local wire-pod plus a local open model via Ollama (temporary test setup)**
+Status: **works** (2026-11-09) with wire-pod + a local open model (Ollama) on the desktop, a temporary host. wire-pod is **stopped** since 2026-11-12; `just up` starts it. Permanent home: the model server, see [06](06-session-plan-llm-over-tailscale.md).
 
 ## Why he can't talk much right now
 

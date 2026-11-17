@@ -2,7 +2,7 @@
 
 Goal: Vector reaches our own wire-pod from any Wi-Fi network, without exposing wire-pod to the internet.
 
-Status: **experiment worked, then reverted to LAN (2026-11-09). Next: permanent setup, hosted on the model server.**
+Status: **experiment worked, then reverted to LAN (2026-11-09).** Tailscale is installed on Vector but not running. The permanent setup is planned as a session: [06](06-session-plan-llm-over-tailscale.md). Commands: `just ts-*`.
 
 ## Feasibility (2026-11-09, read-only look)
 
@@ -59,6 +59,9 @@ To avoid a reboot leaving him voiceless, the experiment was rolled back the same
 - Left in place on the robot: `/data/tailscale/` (binaries and node state, so it can rejoin without a new login). The node shows as offline in the tailnet admin.
 
 ### Next: permanent, on the model server
+
+Full step-by-step plan: [06 Planned session](06-session-plan-llm-over-tailscale.md). Summary:
+
 
 Move wire-pod to the machine that will run the models (currently being containerised) and do the permanent version there:
 1. Run wire-pod there (`wire-pod/run.sh`, plus boot-start via Quadlet/systemd), with the LLM endpoint on the same host.
