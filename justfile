@@ -49,7 +49,7 @@ find:
 # Open a shell on Vector, or run a command: just ssh 'uptime'
 [group('robot')]
 ssh *cmd:
-    {{ssh}} {{cmd}}
+    {{ssh}} {{ if cmd == "" { "" } else { quote(cmd) } }}
 
 # Services, connections, memory and load on Vector
 [group('robot')]
