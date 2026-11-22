@@ -54,3 +54,10 @@ Technical detail lives in [docs/](docs/README.md). No keys, passwords, network n
 - Wrote up the permanent "voice and LLM over Tailscale" setup as a planned session (doc 06), to run once the model server's container migration is done.
 - Refreshed the README and every doc status to match reality, and added a CLAUDE.md so anyone using Claude Code with this repo gets the safety rules and conventions up front.
 - Looked into reusing Vector's animations on a self-built robot: Digital Dream Labs' licence only allows them on real Vectors, so a custom robot needs its own animations.
+
+## 2026-11-21
+
+- Moved Vector's brain to the always-on home server. wire-pod (his voice server) now runs there as a system service, and only devices on the tailnet can reach it; the home network can't, because wire-pod has no login.
+- Gave him a small language model of his own (Qwen3-4B-Instruct-2507) instead of sharing the server's big one, so he never waits behind other jobs. Picked it by testing two small models on wire-pod's real prompt: the newer, smaller one made fewer mistakes with Vector's animation commands and was just as fast. The test script is in the repo, so anyone can check their own model.
+- Found and worked around two bugs in wire-pod's container image: it forgot its settings on every restart, and its first-time setup could never finish. The second is probably what was behind the "restart once" trick from 2026-11-09.
+- New `just` recipes to install all of this on a server. Next: the robot side, so Tailscale starts on Vector at boot.

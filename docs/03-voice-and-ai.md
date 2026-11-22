@@ -2,7 +2,7 @@
 
 Goal: talk to Vector properly. He should answer questions and hold a conversation using an AI service we choose, with our own API key.
 
-Status: **works** (2026-11-09) with wire-pod + a local open model (Ollama) on the desktop, a temporary host. wire-pod is **stopped** since 2026-11-12; `just up` starts it. Permanent home: the model server, see [06](06-session-plan-llm-over-tailscale.md).
+Status: **works.** Since 2026-11-21 wire-pod and a small local model (Qwen3-4B-Instruct-2507, llama.cpp) run on the always-on model server, tailnet-only: see [06](06-session-plan-llm-over-tailscale.md). The 2026-11-09 desktop setup (Ollama, Qwen2.5 7B) below is kept as the first working version.
 
 ## Why he can't talk much right now
 
@@ -113,6 +113,22 @@ Check it's up: `sudo ss -tlnp | grep -E ':(443|8080) '` should show both ports. 
 `podman start` reuses the container. `wire-pod/run.sh` **recreates** it from the latest image. Settings survive either way (they're in the `wire-pod-data` volume), but only use `run.sh` to update or rebuild.
 
 To make both start at boot later: `sudo systemctl enable ollama`, and for the container, `podman generate systemd`/Quadlet (rootful), since Podman's `--restart` flag alone doesn't survive a host reboot.
+
+### Choosing the model (2026-11-21)
+
+For the permanent server, two small open-licence, non-thinking models were tested on **wire-pod's real system prompt** (its default prompt plus the command list it appends), streamed at temperature 1 like wire-pod, with 10 typical spoken requests, 3–4 runs each. The script is [`llm/eval-wirepod-prompt.py`](../llm/eval-wirepod-prompt.py) (`just llm-eval`). Both were Q4_K_M GGUFs on llama.cpp (Vulkan) on an AMD iGPU.
+
+| | Qwen3-4B-Instruct-2507 | Qwen2.5-7B-Instruct |
+|---|---|---|
+| Size | 2.4 GB | 4.4 GB |
+| Median full answer | 0.6–0.8 s | 0.6–1.0 s |
+| Invented animation names (not in wire-pod's list) | 0 in 30 answers | 8 in 30 (`curious`, `excited`, `proud`…) |
+| Other mistakes | occasionally a command in square brackets | described the camera view without taking a photo; `[GET IMAGE FRONT]` |
+| Emojis | often (harmless: wire-pod strips them) | sometimes |
+
+**Picked Qwen3-4B-Instruct-2507** (Apache-2.0): fewer real mistakes, half the size, as fast. The 2507 *Instruct* release never "thinks out loud", which was the reason to avoid Qwen3 in Ollama earlier. It also handles tool calls, so the same model can serve other things such as Home Assistant voice.
+
+wire-pod settings for it: provider `custom`, endpoint `http://127.0.0.1:8085/v1` (or wherever your server listens), model `small` (llama.cpp's `--alias`), key anything (`none`). If the endpoint is behind a proxy, make sure the proxy **streams** replies: wire-pod speaks sentence by sentence as text arrives, and a buffering proxy made a story wait until it was complete.
 
 #### Still open
 

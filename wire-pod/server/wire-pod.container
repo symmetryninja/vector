@@ -1,0 +1,38 @@
+# wire-pod as a rootful Podman Quadlet, for an always-on server. Installed by `just server-install`,
+# which fills in @DIR@ (where wire-pod's data and scripts live, WIREPOD_DIR) and @WEB_PORT@.
+# Robots reach it over the tailnet only (wire-pod.nft). See docs/06.
+[Unit]
+Description=wire-pod (voice server for Vector)
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Container]
+ContainerName=wire-pod
+# Upstream only publishes :main. Pin a digest (image@sha256:...) for repeatable installs.
+Image=ghcr.io/kercre123/wire-pod:main
+# Host networking: wire-pod binds 80 (robot's /ok check) and 443 (voice), writes its own address
+# into the robot's config, and reaches an LLM on the server's localhost.
+Network=host
+# wire-pod ignores SIGTERM as PID 1; an init process lets it stop cleanly.
+PodmanArgs=--init
+Environment=WIREPOD_DATA_DIR=/data
+Environment=WEBSERVER_PORT=@WEB_PORT@
+Volume=@DIR@/data:/data
+Volume=@DIR@/data/images:/images
+# Run from /data/chipper so settings are saved to disk (see run-chipper.sh for why).
+Volume=@DIR@/run-chipper.sh:/run-chipper.sh:ro
+Exec=/run-chipper.sh
+HealthCmd=curl -fsS http://127.0.0.1:@WEB_PORT@/ok
+HealthInterval=60s
+
+[Service]
+# Tailnet and localhost only: wire-pod has no authentication. `just wirepod-lan open` lifts this
+# until the next restart (needed once, for a robot's first sign-in on the LAN).
+ExecStartPre=-/usr/sbin/nft delete table inet wirepod
+ExecStartPre=/usr/sbin/nft -f @DIR@/wire-pod.nft
+Restart=always
+# 143 = stopped by SIGTERM, which is a clean stop.
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

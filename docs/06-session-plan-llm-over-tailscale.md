@@ -1,6 +1,6 @@
 # 6. Planned session: Vector's voice and LLM over Tailscale, permanently
 
-Status: **planned**. Waiting for the model server's container migration to finish.
+Status: **in progress** (2026-11-21). Server side done: wire-pod and a small LLM run on the model server, tailnet-only. Robot side (steps 1, 4–8) next.
 
 Background: [03 Voice and AI](03-voice-and-ai.md) (how wire-pod and the LLM fit together) and [05 Tailscale](05-tailscale.md) (the 2026-11-09 experiment that proved it works, and its caveats).
 
@@ -9,7 +9,8 @@ Background: [03 Voice and AI](03-voice-and-ai.md) (how wire-pod and the LLM fit 
 Vector can talk to wire-pod and the LLM **from any network**. That keeps working **after reboots** of the robot and the server, and **nothing is exposed to the public internet**.
 
 Done when:
-- [ ] wire-pod runs on the model server, starts at boot, and uses the server's own LLM endpoint.
+- [x] wire-pod runs on the model server, starts at boot, and uses the server's own LLM endpoint.
+- [x] wire-pod's ports are reachable from the tailnet and localhost only, not the LAN.
 - [ ] wire-pod presents a Tailscale (Let's Encrypt) certificate for the server's MagicDNS name, renewed automatically.
 - [ ] Tailscale on Vector starts at boot from `/data`, as a tagged node, and survives a robot reboot.
 - [ ] Vector resolves the server's MagicDNS name after a reboot.
@@ -29,13 +30,15 @@ Vector ──(tailnet, WireGuard)──► model server
 ```
 
 - **wire-pod lives on the model server**, next to the LLM, so the LLM endpoint can stay bound to localhost (or the container network) and is never on the tailnet.
+- **The LLM is a small model of its own** ([Qwen3-4B-Instruct-2507](03-voice-and-ai.md#choosing-the-model-2026-11-21), llama.cpp, ~5 GB), always on. A shared big model would make Vector wait behind other jobs, and would change whenever the big model is switched.
+- **wire-pod runs with host networking but is firewalled to the tailnet.** It has no authentication, so an nftables rule (`wire-pod/server/wire-pod.nft`, loaded by the unit) lets only `lo` and `tailscale0` reach ports 80, 443 and its web UI. `just wirepod-lan open` lifts it for a robot's first sign-in on the LAN.
 - Considered and rejected: wire-pod stays on the desktop and reaches the LLM over the tailnet. It's more moving parts, the desktop has to be always on, and the LLM endpoint would be on the tailnet.
 
 ## Before the session (prerequisites)
 
-- [ ] The model server's container migration is finished, and its LLM serves an OpenAI-compatible API (`/v1/chat/completions`). Note the model name.
-- [ ] Ports **80 and 443** are free on the model server (wire-pod needs both, with host networking), plus a free port for wire-pod's web UI (`WIREPOD_WEB_PORT`).
-- [ ] HTTPS certificates are enabled in the tailnet (already the case).
+- [x] The model server's LLM serves an OpenAI-compatible API (`/v1/chat/completions`). Model name: `small`.
+- [x] Ports **80 and 443** are free on the model server (a leftover reverse proxy had them), plus a free port for wire-pod's web UI (`WIREPOD_WEB_PORT`).
+- [x] HTTPS certificates are enabled in the tailnet.
 - [ ] Decide the robot's tailnet login: **interactive login URL** (no secret to store; used in the experiment) or **tagged pre-auth key** (stored only in `local/`, never in git). A tagged node is needed for tag-based access rules either way.
 - [ ] Vector is on, on the charger, and reachable (`just find`).
 
@@ -50,13 +53,18 @@ Each step ends with a check. Stop and roll back if a check fails.
 3. Check: login with the shared key fails, and login with ours works.
 4. Add recipes: `just ssh-key-install`, `just ssh-key-check`.
 
-### 2. wire-pod on the model server (~45 min)
+### 2. wire-pod and the LLM on the model server ✅ (2026-11-21)
 
-1. Copy `wire-pod/run.sh` there and set `WIREPOD_WEB_PORT` if needed.
-2. Create the container, then run `just wirepod-init` (first-time setup, including the restart workarounds).
-3. `just wirepod-ai <model> http://localhost:<port>/v1` with the server's own LLM.
-4. Start at boot: a **Podman Quadlet** (rootful) for wire-pod, or the container engine the server already uses.
-5. Check: `just ollama-test`-style request against the LLM endpoint, and `just wirepod-status` shows 443 and the UI port held by wire-pod.
+On the server, with this repo cloned and `local/.env` set (`WIREPOD_SYSTEMD=true`, `WIREPOD_WEB_PORT`, `LLM_MODEL`, `LLM_ENDPOINT`):
+
+1. LLM: `just llm-install` (llama.cpp + Qwen3-4B-Instruct-2507 on `127.0.0.1:8085`), or point `LLM_ENDPOINT` at an OpenAI-compatible server you already run. Check: `just llm-test`, `just llm-eval 3`.
+2. wire-pod: `just server-install` (Quadlet, firewall, weekly cert timer), then `just wirepod-init` and `just wirepod-ai`.
+3. Check: `just wirepod-status` shows 443 and the UI port held by wire-pod, `just wirepod-lan` says closed, and `just wirepod-ai-show` shows the model.
+
+Two bugs in wire-pod's container image, worked around by `server-install` (found 2026-11-21):
+- **Settings lost on every restart.** The image keeps its config files in the image and symlinks them into `/data`, but wire-pod saves them by writing a temp file and renaming it, which replaces the symlink with a file inside the container. Quadlet recreates the container on each start, so the settings and robot registrations vanished. `wire-pod/server/run-chipper.sh` starts wire-pod from `/data/chipper` instead, so it writes straight to disk.
+- **First-time setup fails with "Service must be vosk or whisper".** The entrypoint creates an empty `apiConfig.json`, which wire-pod can't parse, so it never loads its speech settings; restarting doesn't help. Seeding the file with `{}` fixes it. (Probably what was behind the "restart once" trick in [03](03-voice-and-ai.md).)
+- Also: wire-pod ignores SIGTERM as PID 1, so the unit uses `--init` to stop cleanly.
 
 ### 3. Tailscale certificate for wire-pod (~20 min)
 

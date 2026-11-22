@@ -1,0 +1,33 @@
+# A small, always-on LLM for wire-pod: llama.cpp's server with Qwen3-4B-Instruct-2507 (Apache-2.0),
+# as a rootful Podman Quadlet. For servers that don't already run an OpenAI-compatible endpoint.
+# Installed by `just llm-install`, which fills in @MODELS@ (folder holding the .gguf).
+#
+# Why this model, and how it was tested: docs/03, "Choosing the model". About 5 GB of memory
+# (2.4 GB weights + KV cache for 4 parallel slots of 8k tokens).
+#
+# GPU: this uses the Vulkan image and passes /dev/dri (AMD/Intel). For NVIDIA use the
+# server-cuda image with --device nvidia.com/gpu=all; for CPU only, the plain server image.
+[Unit]
+Description=Small LLM for wire-pod (llama.cpp, 127.0.0.1:8085)
+After=network-online.target
+
+[Container]
+ContainerName=small-llm
+Image=ghcr.io/ggml-org/llama.cpp:server-vulkan
+AddDevice=/dev/dri
+Volume=@MODELS@:/models:ro
+# Localhost only: wire-pod runs on the same machine.
+PublishPort=127.0.0.1:8085:8085
+Exec=--model /models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  --alias small \
+  --host 0.0.0.0 --port 8085 \
+  --ctx-size 32768 --parallel 4 --n-gpu-layers 999 \
+  --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 \
+  --jinja
+
+[Service]
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

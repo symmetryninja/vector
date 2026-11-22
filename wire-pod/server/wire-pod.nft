@@ -1,0 +1,9 @@
+# wire-pod has no authentication, so only localhost and the tailnet may reach it.
+# Loaded by the wire-pod unit before the container starts; `lan.sh open` deletes it.
+table inet wirepod {
+	chain input {
+		type filter hook input priority filter - 5; policy accept;
+		iifname { "lo", "tailscale0" } accept
+		tcp dport { 80, 443, 8090 } drop
+	}
+}

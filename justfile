@@ -15,8 +15,12 @@ vector_key := env("VECTOR_KEY", home_directory() / ".ssh/vector_private_key")
 engine := env("CONTAINER_ENGINE", "podman")
 wirepod_web_port := env("WIREPOD_WEB_PORT", "8080")
 wirepod_ui := env("WIREPOD_UI", "http://localhost:" + wirepod_web_port)
-llm_model := env("LLM_MODEL", "qwen2.5:7b")
-llm_endpoint := env("LLM_ENDPOINT", "http://localhost:11434/v1")
+llm_model := env("LLM_MODEL", "small")
+llm_endpoint := env("LLM_ENDPOINT", "http://127.0.0.1:8085/v1")
+# Server install (docs/06): where wire-pod's data and scripts live, and whether it runs as a systemd unit
+wirepod_dir := env("WIREPOD_DIR", "/srv/wire-pod")
+wirepod_systemd := env("WIREPOD_SYSTEMD", "false")
+llm_models := env("LLM_MODELS_DIR", "/srv/models")
 ts_version := env("TS_VERSION", "1.104.5")
 
 # Older WireOS builds only offer ssh-rsa host keys.
@@ -170,25 +174,25 @@ wirepod-run:
 # Start the existing wire-pod container
 [group('wire-pod')]
 wirepod-start:
-    sudo {{engine}} start wire-pod
+    {{ if wirepod_systemd == "true" { "sudo systemctl start wire-pod" } else { "sudo " + engine + " start wire-pod" } }}
     @sleep 10
 
 # Stop wire-pod
 [group('wire-pod')]
 wirepod-stop:
-    -sudo {{engine}} stop -t 10 wire-pod
+    -{{ if wirepod_systemd == "true" { "sudo systemctl stop wire-pod" } else { "sudo " + engine + " stop -t 10 wire-pod" } }}
 
 # Restart wire-pod
 [group('wire-pod')]
 wirepod-restart:
-    sudo {{engine}} restart -t 5 wire-pod
+    {{ if wirepod_systemd == "true" { "sudo systemctl restart wire-pod" } else { "sudo " + engine + " restart -t 5 wire-pod" } }}
     @sleep 10
     @just wirepod-status
 
 # Follow wire-pod's log
 [group('wire-pod')]
 wirepod-logs:
-    sudo {{engine}} logs -f --tail 50 wire-pod
+    {{ if wirepod_systemd == "true" { "sudo journalctl -fu wire-pod -n 50" } else { "sudo " + engine + " logs -f --tail 50 wire-pod" } }}
 
 # Check wire-pod is running and listening (443 = voice, web UI port)
 [group('wire-pod')]
@@ -238,10 +242,10 @@ wirepod-setup-bot:
     done
     echo "Next: sign Vector in over Bluetooth (the address on his screen)."
 
-# Connect wire-pod to an OpenAI-compatible LLM (default: local Ollama), with conversation on
+# Connect wire-pod to an OpenAI-compatible LLM (llama.cpp server, Ollama, ...), with conversation on
 [group('wire-pod')]
 wirepod-ai model=llm_model endpoint=llm_endpoint:
-    curl -s -X POST -H 'Content-Type: application/json' {{wirepod_ui}}/api/set_kg_api -d '{"enable":true,"provider":"custom","key":"ollama","id":"","model":"{{model}}","intentgraph":true,"robotName":"","openai_prompt":"","openai_voice":"","openai_voice_with_english":false,"save_chat":true,"commands_enable":true,"endpoint":"{{endpoint}}","top_p":0,"temp":0}'; echo
+    curl -s -X POST -H 'Content-Type: application/json' {{wirepod_ui}}/api/set_kg_api -d '{"enable":true,"provider":"custom","key":"none","id":"","model":"{{model}}","intentgraph":true,"robotName":"","openai_prompt":"","openai_voice":"","openai_voice_with_english":false,"save_chat":true,"commands_enable":true,"endpoint":"{{endpoint}}","top_p":0,"temp":0}'; echo
     @just wirepod-restart
 
 # Show wire-pod's current AI settings
@@ -250,7 +254,20 @@ wirepod-ai-show:
     @curl -s {{wirepod_ui}}/api/get_kg_api | python3 -m json.tool
 
 # ---------------------------------------------------------------------------
-# Ollama (local LLM on this machine)
+# LLM (any OpenAI-compatible endpoint; see docs/03 "Choosing the model")
+
+# Ask the model a question through the same API wire-pod uses
+[group('llm')]
+llm-test question="What is the tallest mountain in Australia?" model=llm_model endpoint=llm_endpoint:
+    curl -s -w '\n(%{time_total}s)\n' {{endpoint}}/chat/completions -H 'Content-Type: application/json' -d '{"model":"{{model}}","messages":[{"role":"system","content":"You are a helpful, animated robot called Vector. Keep the response concise yet informative."},{"role":"user","content":"{{question}}"}]}' | python3 -c 'import json,sys; t=sys.stdin.read(); body,_,tail=t.rpartition("\n("); print(json.loads(body)["choices"][0]["message"]["content"]); print("(" + tail)'
+
+# Test a model on wire-pod's real prompt and command syntax: just llm-eval 3 small=http://127.0.0.1:8085/v1
+[group('llm')]
+llm-eval runs="1" *models=(llm_model + "=" + llm_endpoint):
+    python3 -I llm/eval-wirepod-prompt.py --runs {{runs}} {{models}}
+
+# ---------------------------------------------------------------------------
+# Ollama (optional: a local LLM on a desktop; the server uses llama.cpp instead)
 
 # Start Ollama (not enabled at boot)
 [group('ollama')]
@@ -268,10 +285,66 @@ ollama-stop:
 ollama-pull model=llm_model:
     ollama pull {{model}}
 
-# Ask the model a question through the same API wire-pod uses
-[group('ollama')]
-ollama-test question="What is the tallest mountain in Australia?" model=llm_model:
-    curl -s -w '\n(%{time_total}s)\n' {{llm_endpoint}}/chat/completions -H 'Content-Type: application/json' -d '{"model":"{{model}}","messages":[{"role":"system","content":"You are a helpful, animated robot called Vector. Keep the response concise yet informative."},{"role":"user","content":"{{question}}"}]}' | python3 -c 'import json,sys; t=sys.stdin.read(); body,_,tail=t.rpartition("\n("); print(json.loads(body)["choices"][0]["message"]["content"]); print("(" + tail)'
+# ---------------------------------------------------------------------------
+# Server (always-on wire-pod on the tailnet; run these ON the server. See docs/06)
+
+# Install wire-pod as a systemd service (Quadlet), tailnet + localhost only, with weekly cert renewal
+[group('server')]
+server-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="{{wirepod_dir}}"
+    for p in 80 443 {{wirepod_web_port}}; do
+      owner="$(sudo ss -tlnpH "sport = :$p" | grep -o '(("[^"]*"' | head -1 | tr -d '("' || true)"
+      [ -z "$owner" ] || [ "$owner" = chipper ] || { echo "port $p is taken by $owner"; exit 1; }
+    done
+    sudo mkdir -p "$dir/data/images" "$dir/data/chipper"
+    sudo install -m 755 wire-pod/server/run-chipper.sh wire-pod/server/cert.sh "$dir/"
+    sudo install -m 644 wire-pod/server/wire-pod.nft "$dir/"
+    sudo sed -i 's/tcp dport { 80, 443, [0-9]* }/tcp dport { 80, 443, {{wirepod_web_port}} }/' "$dir/wire-pod.nft"
+    # The image creates an empty apiConfig.json, which wire-pod can't parse ("Service must be vosk or whisper")
+    sudo test -s "$dir/data/chipper/apiConfig.json" || echo '{}' | sudo tee "$dir/data/chipper/apiConfig.json" >/dev/null
+    sudo mkdir -p /etc/containers/systemd
+    sed -e "s#@DIR@#$dir#g" -e "s#@WEB_PORT@#{{wirepod_web_port}}#g" wire-pod/server/wire-pod.container | sudo tee /etc/containers/systemd/wire-pod.container >/dev/null
+    printf '[Unit]\nDescription=Renew wire-pod Tailscale certificate\n\n[Service]\nType=oneshot\nExecStart=%s/cert.sh\n' "$dir" | sudo tee /etc/systemd/system/wire-pod-cert.service >/dev/null
+    printf '[Unit]\nDescription=Renew wire-pod Tailscale certificate weekly\n\n[Timer]\nOnCalendar=weekly\nRandomizedDelaySec=6h\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n' | sudo tee /etc/systemd/system/wire-pod-cert.timer >/dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now wire-pod-cert.timer
+    sudo systemctl restart wire-pod
+    echo "wire-pod installed. Next: just wirepod-init, then just wirepod-ai (set WIREPOD_SYSTEMD=true in local/.env)"
+
+# Install the small LLM (llama.cpp + Qwen3-4B-Instruct-2507) as a systemd service on 127.0.0.1:8085
+[group('server')]
+llm-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sudo mkdir -p "{{llm_models}}"
+    f="{{llm_models}}/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+    sudo test -f "$f" || sudo curl -fL -o "$f" https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+    sudo mkdir -p /etc/containers/systemd
+    sed "s#@MODELS@#{{llm_models}}#g" llm/small-llm.container | sudo tee /etc/containers/systemd/small-llm.container >/dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl restart small-llm
+    echo "waiting for the model to load..."
+    for i in $(seq 60); do curl -sf 127.0.0.1:8085/health >/dev/null && break; sleep 2; done
+    just llm-test
+
+# Let the LAN reach wire-pod (open), or only the tailnet (close). Open is needed once, for a robot's first sign-in
+[group('server')]
+wirepod-lan action="status":
+    #!/usr/bin/env bash
+    case "{{action}}" in
+      open)   sudo nft delete table inet wirepod 2>/dev/null || true; echo "LAN open until 'close' or a wire-pod restart";;
+      close)  sudo nft delete table inet wirepod 2>/dev/null || true; sudo nft -f "{{wirepod_dir}}/wire-pod.nft"; echo "tailnet + localhost only";;
+      status) sudo nft list table inet wirepod >/dev/null 2>&1 && echo "closed: tailnet + localhost only" || echo "OPEN to the LAN";;
+      *)      echo "usage: just wirepod-lan open|close|status"; exit 1;;
+    esac
+
+# Switch wire-pod to a Tailscale certificate for this server's MagicDNS name (keeps the LAN cert as *.selfsigned-lan)
+[group('server')]
+wirepod-ts-cert:
+    sudo sh -c 'cd "{{wirepod_dir}}/data/certs" && cp -n cert.crt cert.crt.selfsigned-lan && cp -n cert.key cert.key.selfsigned-lan'
+    sudo "{{wirepod_dir}}/cert.sh"
 
 # ---------------------------------------------------------------------------
 # Tailscale on Vector (experimental; see docs/05-tailscale.md)
