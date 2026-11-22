@@ -22,6 +22,9 @@ wirepod_dir := env("WIREPOD_DIR", "/srv/wire-pod")
 wirepod_systemd := env("WIREPOD_SYSTEMD", "false")
 llm_models := env("LLM_MODELS_DIR", "/srv/models")
 ts_version := env("TS_VERSION", "1.104.5")
+# The wire-pod server's tailnet name and IP (private: set in local/.env)
+server_ts_name := env("SERVER_TS_NAME", "")
+server_ts_ip := env("SERVER_TS_IP", "")
 
 # Older WireOS builds only offer ssh-rsa host keys.
 ssh_opts := "-i " + vector_key + " -o BatchMode=yes -o ConnectTimeout=8 -o PubkeyAcceptedAlgorithms=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa"
@@ -372,6 +375,55 @@ ts-install version=ts_version:
 ts-start:
     {{ssh}} 'systemctl is-active -q tailscaled-test || { mkdir -p /run/tailscale; systemd-run --unit=tailscaled-test --property=MemoryMax=96M --setenv=GOMEMLIMIT=48MiB --setenv=GOGC=50 /data/tailscale/tailscaled --state=/data/tailscale/tailscaled.state --statedir=/data/tailscale --socket=/run/tailscale/tailscaled.sock --tun=tailscale0; sleep 5; }'
     {{ssh}} 'timeout 20 /data/tailscale/tailscale --socket=/run/tailscale/tailscaled.sock up --hostname=vector --netfilter-mode=off --accept-dns=false --accept-routes=false || true'
+
+# Start Tailscale on Vector at every boot, and resolve the server's tailnet name (units on / call files on /data; re-run after an OTA)
+[group('tailscale')]
+ts-install-boot name=server_ts_name ip=server_ts_ip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -n "{{name}}" ] && [ -n "{{ip}}" ] || { echo "set SERVER_TS_NAME and SERVER_TS_IP in local/.env"; exit 1; }
+    # Hosts file on /data: the robot's own /etc/hosts plus the server's tailnet name (his DNS can't resolve .ts.net)
+    {{ssh}} 'grep -q ts.net /etc/hosts && umount /etc/hosts 2>/dev/null; grep -v ts.net /etc/hosts > /data/tailscale/hosts; echo "{{ip}} {{name}}" >> /data/tailscale/hosts'
+    {{ssh}} 'systemctl stop tailscaled-test 2>/dev/null || true; mount -o rw,remount / && cat > /etc/systemd/system/vector-tailscaled.service && mount -o ro,remount /' <<'UNIT'
+    [Unit]
+    Description=Tailscale on Vector (binary and state on /data)
+    After=network.target connman.service
+    RequiresMountsFor=/data
+
+    [Service]
+    ExecStartPre=/bin/mkdir -p /run/tailscale
+    ExecStart=/data/tailscale/tailscaled --state=/data/tailscale/tailscaled.state --statedir=/data/tailscale --socket=/run/tailscale/tailscaled.sock --tun=tailscale0
+    Environment=GOMEMLIMIT=48MiB GOGC=50
+    MemoryMax=96M
+    Restart=on-failure
+    RestartSec=10
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+    {{ssh}} 'mount -o rw,remount / && cat > /etc/systemd/system/vector-hosts.service && mount -o ro,remount /' <<'UNIT'
+    [Unit]
+    Description=Resolve the wire-pod server's tailnet name (hosts file on /data)
+    RequiresMountsFor=/data
+    ConditionPathExists=/data/tailscale/hosts
+    Before=anki-robot.target
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    ExecStart=/bin/mount --bind /data/tailscale/hosts /etc/hosts
+    ExecStop=/bin/umount /etc/hosts
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+    {{ssh}} 'mount -o rw,remount / && systemctl daemon-reload && systemctl enable vector-tailscaled vector-hosts; mount -o ro,remount /; systemctl restart vector-hosts; systemctl restart vector-tailscaled; sleep 8; systemctl is-active vector-tailscaled vector-hosts; grep ts.net /etc/hosts'
+    just ts-status
+
+# Undo ts-install-boot: stop Tailscale and the hosts entry, remove the units (keeps /data/tailscale)
+[group('tailscale')]
+ts-remove-boot:
+    {{ssh}} 'systemctl stop vector-tailscaled vector-hosts; mount -o rw,remount / && systemctl disable vector-tailscaled vector-hosts; rm -f /etc/systemd/system/vector-tailscaled.service /etc/systemd/system/vector-hosts.service; systemctl daemon-reload; mount -o ro,remount /; echo removed'
 
 # Show Tailscale status on Vector
 [group('tailscale')]
