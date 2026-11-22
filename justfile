@@ -157,7 +157,7 @@ flash-file file port="8000":
     #!/usr/bin/env bash
     set -euo pipefail
     ota="$(realpath "{{file}}")"
-    vec_ip="$(getent hosts {{vector_host}} | awk '{print $1; exit}')"
+    vec_ip="$(getent ahostsv4 {{vector_host}} | awk '{print $1; exit}')"
     my_ip="$(ip route get "$vec_ip" | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')"
     echo "sha256: $(sha256sum "$ota" | cut -d' ' -f1)"
     python3 -m http.server {{port}} --bind "$my_ip" --directory "$(dirname "$ota")" &
@@ -234,7 +234,7 @@ wirepod-init language="en-US":
 wirepod-setup-bot:
     #!/usr/bin/env bash
     set -euo pipefail
-    vec_ip="$(getent hosts {{vector_host}} | awk '{print $1; exit}')"
+    vec_ip="$(getent ahostsv4 {{vector_host}} | awk '{print $1; exit}')"
     curl -s -F "ip=$vec_ip" -F "key=@{{vector_key}}" {{wirepod_ui}}/api-ssh/setup; echo
     last=""
     for i in $(seq 1 120); do
@@ -405,13 +405,14 @@ ts-install-boot name=server_ts_name ip=server_ts_ip:
     [Unit]
     Description=Resolve the wire-pod server's tailnet name (hosts file on /data)
     RequiresMountsFor=/data
-    ConditionPathExists=/data/tailscale/hosts
     Before=anki-robot.target
 
     [Service]
     Type=oneshot
     RemainAfterExit=yes
-    ExecStart=/bin/mount --bind /data/tailscale/hosts /etc/hosts
+    # /data is an encrypted volume that can appear after this unit is first considered, so wait
+    # for the file (up to 60 s) rather than use ConditionPathExists, which skipped it at boot.
+    ExecStart=/bin/sh -c 'for i in $(seq 60); do [ -f /data/tailscale/hosts ] && exec /bin/mount --bind /data/tailscale/hosts /etc/hosts; sleep 1; done; echo "no /data/tailscale/hosts"; exit 1'
     ExecStop=/bin/umount /etc/hosts
 
     [Install]
