@@ -60,11 +60,15 @@ Every unlocked bot accepts the same publicly known key, in `/etc/ssh/authorized_
 
 ### 3. Tailscale at boot (robot)
 
-WireOS has **no supported hook that runs scripts from `/data` at boot**. `/data/wired/mods` holds settings for WireOS's own daemon, not scripts. So two small systemd units go on the root filesystem, and everything they run stays on `/data`. `just ts-install-boot` installs them; re-run it after an OTA (auto-updates are off).
+WireOS has **no supported hook that runs scripts from `/data` at boot**. `/data/wired/mods` holds settings for WireOS's own daemon, not scripts. So small systemd units go on the root filesystem, and everything they run stays on `/data`. `just ts-install-boot` installs them; re-run it after an OTA (auto-updates are off).
 
 - `vector-tailscaled.service` runs `/data/tailscale/tailscaled` (memory-capped: `MemoryMax=96M`, `GOMEMLIMIT=48MiB`). The node state on `/data` reconnects it by itself, no login needed. If an earlier `tailscale down` is saved in the state, run `tailscale up` once.
 - `vector-hosts.service` bind-mounts `/data/tailscale/hosts` (his own hosts file plus `<server-ts-ip> <server>.<tailnet>.ts.net`) over `/etc/hosts` before the robot software starts. His DNS can't resolve `.ts.net` names.
 - **Gotcha:** the first version used `ConditionPathExists=/data/tailscale/hosts`. `/data` is an encrypted volume that wasn't readable yet when systemd checked, so the unit was skipped at boot. Vector couldn't resolve the server and sat on his loading screen. The unit now waits up to 60 s for the file.
+- **Gotcha (found 2026-11-22, after the hotspot test):** voice stopped working although Tailscale showed him online and `tailscale ping` worked. Two things in WireOS break `tailscale0` after a network change, and `ts-install-boot` now handles both:
+  - **ConnMan** (his network manager) crashed while switching Wi-Fi networks, and when systemd restarted it, it took over `tailscale0` and set it DOWN. `tailscaled` didn't notice ("Failed to write packets to TUN device"). Fixes: `tailscale` is added to ConnMan's `NetworkInterfaceBlacklist` in `/etc/connman/main.conf` (original backed up on `/data`), and `vector-tailscaled` has `PartOf=connman.service`, so it restarts with ConnMan.
+  - **WireOS's own firewall** (`iptables.service`, `/etc/iptables/iptables.rules`) has default-DROP policies and only lets traffic *out* on `wlan0`, `lo` and `tether`. It was re-applied at that ConnMan restart, and from then on nothing could leave over `tailscale0` (`ping: sendto: Operation not permitted`). Why it hadn't blocked Tailscale before that is still to confirm. Fix: a third unit, `vector-tailnet-fw.service`, adds `OUTPUT -o tailscale0 ACCEPT` and is tied to `iptables.service`, so it's re-added whenever WireOS reloads its rules. Incoming stays as WireOS defines it (SSH, 443, 8080 and replies); Tailscale's access rules decide who can reach him.
+  - After fixing it, a voice connection stuck from before needed `just restart-robot`.
 - WireOS reboots him **every night** (`rebooter.sh`, between 1 and 5 am once he's been up 4 hours), so boot-time start really matters.
 - Cost: `tailscaled` uses ~25–30 MB of his ~474 MB RAM.
 

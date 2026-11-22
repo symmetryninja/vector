@@ -443,6 +443,8 @@ ts-install-boot name=server_ts_name ip=server_ts_ip:
     [Unit]
     Description=Tailscale on Vector (binary and state on /data)
     After=network.target connman.service
+    # If ConnMan restarts (it can crash while switching Wi-Fi), it sets tailscale0 down; restart with it
+    PartOf=connman.service
     RequiresMountsFor=/data
 
     [Service]
@@ -473,13 +475,34 @@ ts-install-boot name=server_ts_name ip=server_ts_ip:
     [Install]
     WantedBy=multi-user.target
     UNIT
-    {{ssh}} 'mount -o rw,remount / && systemctl daemon-reload && systemctl enable vector-tailscaled vector-hosts; mount -o ro,remount /; systemctl restart vector-hosts; systemctl restart vector-tailscaled; sleep 8; systemctl is-active vector-tailscaled vector-hosts; grep ts.net /etc/hosts'
+    # ConnMan manages every interface it isn't told to ignore, and on (re)start it sets tailscale0 DOWN,
+    # which silently breaks the tailnet. Add "tailscale" to its default ignore list (backup on /data).
+    {{ssh}} 'f=/etc/connman/main.conf; cp -n $f /data/etc/connman-main.conf.orig; grep -q "^NetworkInterfaceBlacklist" $f || { mount -o rw,remount / && echo "NetworkInterfaceBlacklist = vmnet,vboxnet,virbr,ifb,ve-,vb-,tailscale" >> $f; mount -o ro,remount /; }; grep NetworkInterfaceBlacklist $f'
+    # WireOS's own firewall (iptables.service, /etc/iptables/iptables.rules) drops all outgoing traffic
+    # except on wlan0/lo/tether. Allow it out on tailscale0 too, and re-add that whenever WireOS reloads
+    # its rules (a reload wipes rules added by hand). Incoming stays as WireOS defines it.
+    {{ssh}} 'mount -o rw,remount / && cat > /etc/systemd/system/vector-tailnet-fw.service && mount -o ro,remount /' <<'UNIT'
+    [Unit]
+    Description=Let Vector's firewall send traffic over Tailscale (tailscale0)
+    After=iptables.service
+    PartOf=iptables.service
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    ExecStart=/bin/sh -c 'iptables -C OUTPUT -o tailscale0 -j ACCEPT 2>/dev/null || iptables -I OUTPUT -o tailscale0 -j ACCEPT; ip6tables -C OUTPUT -o tailscale0 -j ACCEPT 2>/dev/null || ip6tables -I OUTPUT -o tailscale0 -j ACCEPT'
+    ExecStop=/bin/sh -c 'iptables -D OUTPUT -o tailscale0 -j ACCEPT; ip6tables -D OUTPUT -o tailscale0 -j ACCEPT; true'
+
+    [Install]
+    WantedBy=multi-user.target iptables.service
+    UNIT
+    {{ssh}} 'mount -o rw,remount / && systemctl daemon-reload && systemctl enable vector-tailscaled vector-hosts vector-tailnet-fw; mount -o ro,remount /; systemctl restart vector-tailnet-fw; systemctl restart vector-hosts; systemctl restart vector-tailscaled; sleep 8; systemctl is-active vector-tailscaled vector-hosts; grep ts.net /etc/hosts'
     just ts-status
 
 # Undo ts-install-boot: stop Tailscale and the hosts entry, remove the units (keeps /data/tailscale)
 [group('tailscale')]
 ts-remove-boot:
-    {{ssh}} 'systemctl stop vector-tailscaled vector-hosts; mount -o rw,remount / && systemctl disable vector-tailscaled vector-hosts; rm -f /etc/systemd/system/vector-tailscaled.service /etc/systemd/system/vector-hosts.service; systemctl daemon-reload; mount -o ro,remount /; echo removed'
+    {{ssh}} 'systemctl stop vector-tailscaled vector-hosts vector-tailnet-fw; mount -o rw,remount / && systemctl disable vector-tailscaled vector-hosts vector-tailnet-fw; rm -f /etc/systemd/system/vector-tailscaled.service /etc/systemd/system/vector-hosts.service /etc/systemd/system/vector-tailnet-fw.service; [ -f /data/etc/connman-main.conf.orig ] && cp /data/etc/connman-main.conf.orig /etc/connman/main.conf; systemctl daemon-reload; mount -o ro,remount /; echo removed'
 
 # Show Tailscale status on Vector
 [group('tailscale')]
