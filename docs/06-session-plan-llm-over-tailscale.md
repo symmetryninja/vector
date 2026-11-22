@@ -1,6 +1,6 @@
 # 6. Vector's voice and LLM over Tailscale, permanently
 
-Status: **works** (2026-11-21/22). wire-pod and a small LLM run on an always-on home server, reachable only over the tailnet. Vector runs Tailscale at boot and talks to wire-pod by its MagicDNS name. Voice and conversation work, including after a reboot. **Still to do:** the away-from-home test (phone hotspot).
+Status: **done** (2026-11-21/22). wire-pod and a small LLM run on an always-on home server, reachable only over the tailnet. Vector runs Tailscale at boot and talks to wire-pod by its MagicDNS name. Voice and conversation work at home, after a reboot, and away from home on a phone hotspot over mobile data.
 
 Background: [03 Voice and AI](03-voice-and-ai.md) (how wire-pod and the LLM fit together) and [05 Tailscale](05-tailscale.md) (the 2026-11-09 experiment that proved it works, and why not Funnel).
 
@@ -18,7 +18,7 @@ Vector can talk to wire-pod and the LLM **from any network**. That keeps working
 - [x] Tailnet access rules: Vector can reach only wire-pod's ports (443 voice, 80 check).
 - [x] Vector's shared SSH key is replaced by our own.
 - [x] Voice and conversation work at home, over the tailnet, and after a reboot.
-- [ ] Voice and conversation work on another network (phone hotspot).
+- [x] Voice and conversation work on another network (phone hotspot on mobile data).
 - [x] The desktop wire-pod and Ollama are retired (kept documented in 03 as the first version).
 
 ## Architecture
@@ -119,11 +119,14 @@ Check from the robot: `curl` the server's 443 and 80 (answer), and the server's 
 
 `just reboot`. One minute later, with nothing done by hand: `vector-tailscaled` and `vector-hosts` active, the hosts entry present, `vic-cloud` connected to wire-pod over the tailnet, and voice and conversation working. The first command after a reboot took a few seconds (probably Tailscale finding the direct path and the first TLS connection); later ones are quick.
 
-### 8. Away-from-home test (to do)
+### 8. Away-from-home test ✅ (2026-11-22)
 
 1. Add the network beforehand: `just wifi-add` (interactive `connmanctl`). Saved networks live in `/data/lib/connman/`, so they survive reboots and OTAs.
 2. Set `VECTOR_HOST` to his tailnet name so the `just` robot recipes work on any network.
-3. Move Vector to the phone hotspot. Check: voice and conversation work, and `tailscale ping vector` shows a direct or relay (DERP) path. Note the latency.
+3. Move Vector to the phone hotspot (`connmanctl connect <service>` over SSH works; the session drops and you reconnect over the tailnet). Tailscale reconnected by itself within a minute.
+4. **Turn the phone's own Wi-Fi off.** With it on, the hotspot shares the home Wi-Fi and Tailscale's path still goes through the home LAN, so it isn't a real away test.
+
+Result: Tailscale went **direct over the mobile network** (the carrier's public address, no relay), ~365 ms round trip against ~5 ms at home. Voice commands and conversation worked with no noticeable delay. To bring him home, turn the hotspot off: he goes back to a saved home network.
 
 ## Rollback
 

@@ -11,9 +11,9 @@ Notes, scripts and a `justfile` for running an **Anki Vector** robot on **WireOS
 | Voice | [wire-pod](https://github.com/kercre123/wire-pod) in a container, local Vosk speech-to-text. |
 | Conversation | Small local open model (Qwen3-4B-Instruct-2507, Apache-2.0) on llama.cpp, wired into wire-pod's intent graph. [How it was picked](docs/03-voice-and-ai.md#choosing-the-model-2026-11-21). |
 | Hosting | Always-on home server: wire-pod and the model as systemd services (Podman Quadlet), reachable **only over the tailnet**. |
-| Tailscale | Vector runs Tailscale at boot and reaches wire-pod by its tailnet name; access rules let him reach only wire-pod. Works at home and after reboots; away-from-home test still to do. [docs/06](docs/06-session-plan-llm-over-tailscale.md). |
+| Tailscale | Vector runs Tailscale at boot and reaches wire-pod by its tailnet name; access rules let him reach only wire-pod. Works at home, after reboots, and away from home (tested on a phone hotspot over mobile data). [docs/06](docs/06-session-plan-llm-over-tailscale.md). |
 | SSH | The key every unlocked bot shares is replaced by our own (`just ssh-key-install`). |
-| To do | Away-from-home test, router rule, weather provider, face enrolment, Bluetooth sign-in without the third-party page (wire-pod's built-in one crashes WireOS 3.0.2's switchboard: [docs/06](docs/06-session-plan-llm-over-tailscale.md#5-bluetooth-sign-in)). |
+| To do | Router rule, weather provider, face enrolment, Bluetooth sign-in without the third-party page (wire-pod's built-in one crashes WireOS 3.0.2's switchboard: [docs/06](docs/06-session-plan-llm-over-tailscale.md#5-bluetooth-sign-in)). |
 
 ## Quick start
 

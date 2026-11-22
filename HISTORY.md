@@ -72,3 +72,4 @@ Technical detail lives in [docs/](docs/README.md). No keys, passwords, network n
 
 - Set up tailnet access rules: Vector is tagged and can only reach wire-pod on the server. Two gotchas worth knowing: the default "everyone" rule also covers tagged devices, so it has to become "members" for the tag to mean anything; and its destination must stay "all devices", or your own machines lose access to Vector.
 - He remembers four Wi-Fi networks now, including the phone hotspot, ready for the away-from-home test.
+- Away-from-home test: moved Vector to the phone's hotspot with the phone on mobile data. Tailscale reconnected on its own and found a direct path over the mobile network. "What time is it" and a question for the model both worked with no noticeable delay. Vector now works from anywhere with Wi-Fi, and nothing is open to the internet.
