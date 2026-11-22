@@ -5,6 +5,7 @@ Guidance for Claude Code (and humans) working in this repo. It manages a real An
 ## Repo conventions
 
 - **Public repo: never commit private data.** No keys, passwords, Wi-Fi names, IPs, MACs, robot serials/ESNs/names, tailnet names or API keys, in files, commit messages or HISTORY. Use placeholders (`<vector-ip>`, `<host>.<tailnet>.ts.net`). Real values live in `local/.env` (gitignored; see `env.example`). Grep the diff for addresses and names before committing.
+- **Commit as the GitHub noreply address** (`4994379+symmetryninja@users.noreply.github.com`), never a personal email. A fresh clone has no repo-local identity and picks up the global one, so after cloning run `git config --local user.email 4994379+symmetryninja@users.noreply.github.com`. Check with `git log origin/main..HEAD --format=%ae` before pushing.
 - **`HISTORY.md`**: add a dated, plain-language entry for every meaningful step (what was done and why, not commands). Newest at the bottom, grouped by date heading.
 - **`docs/0N-*.md`**: one doc per goal. Keep each `Status:` line and the table in `docs/README.md` accurate. Record findings with dates under `## Findings`; mark anything unverified as "to confirm".
 - **Commit and push to `main` freely.** Keep docs and `HISTORY.md` current as work happens, without asking first. Still ask before force-pushes or history rewrites.
