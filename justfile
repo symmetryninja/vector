@@ -35,7 +35,7 @@ default:
     @just --list --unsorted
 
 # ---------------------------------------------------------------------------
-# Everything at once
+# Everything at once (the older desktop setup: Ollama + the wire-pod container from run.sh)
 
 # Start Ollama and wire-pod, then check wire-pod's ports
 [group('stack')]

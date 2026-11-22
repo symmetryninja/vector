@@ -21,13 +21,18 @@ Guidance for Claude Code (and humans) working in this repo. It manages a real An
 - `/run/fault_code` is a **FIFO**. Never `cat` it, or the shell hangs.
 - BusyBox userland: limited `ls`, `stat` etc. Prefer simple commands.
 - Ask the owner before anything that resets onboarding, reboots him unexpectedly, or flashes firmware.
+- **Tailscale on the robot** runs from three small units on `/` (`vector-tailscaled`, `vector-hosts`, `vector-tailnet-fw`), installed by `just ts-install-boot`; it also adds `tailscale` to ConnMan's interface blacklist. An OTA removes them all, and restores the shared SSH key: after any OTA, re-run `just ts-install-boot` and `just ssh-key-install`.
+- WireOS has its own firewall (`iptables.service`, default DROP, output only on `wlan0`/`lo`/`tether`). Anything new that must send on another interface needs an exception tied to `iptables.service`, like `vector-tailnet-fw`.
+- Set `VECTOR_HOST` to his tailnet name so robot recipes work on any network; `Vector.local` (mDNS) only works on the same LAN.
 
 ## wire-pod and the LLM
 
-- `wire-pod/run.sh` runs rootful Podman with **host networking**. wire-pod needs ports 80 and 443; its web UI port is `WIREPOD_WEB_PORT` (8080 often clashes).
-- Known image quirks: restart once before first-time setup, and again after it, or port 443 isn't listening (`just wirepod-init` handles both).
+- **Current setup: wire-pod on an always-on server, tailnet only** ([docs/06](docs/06-session-plan-llm-over-tailscale.md)): `wire-pod/server/` (Quadlet unit, nftables rule, AppArmor profile, `run-chipper.sh`), installed by `just server-install`. Set `WIREPOD_SYSTEMD=true` there so `wirepod-*` recipes use systemctl. `wire-pod/run.sh` is the older desktop/LAN setup (rootful Podman, host networking).
+- wire-pod needs ports 80 and 443; its web UI port is `WIREPOD_WEB_PORT` (8080 often clashes).
+- Known image quirks (all handled by `just server-install`, see docs/06): settings lost on restart (fixed by `run-chipper.sh`), an empty `apiConfig.json` that blocks first-time setup (seeded with `{}`; this was behind the old "restart once" trick), "forbidden host" at the tailnet name (`WIREPOD_ALLOWED_HOSTS`), SIGTERM ignored as PID 1 (`--init`). The desktop `run.sh` container still needs the restarts that `just wirepod-init` does.
 - wire-pod has **no authentication**. Never expose it publicly (no Tailscale Funnel, no port forwarding). Tailnet only.
-- The LLM is any OpenAI-compatible endpoint (`just wirepod-ai <model> <endpoint>`). Prefer open-licence models; this repo documents Qwen2.5 7B via Ollama.
+- The LLM is any OpenAI-compatible endpoint (`just wirepod-ai <model> <endpoint>`). Prefer open-licence, non-thinking models. Current: Qwen3-4B-Instruct-2507 on llama.cpp (`just llm-install`); the first version used Qwen2.5 7B via Ollama. Test a model on wire-pod's real prompt with `just llm-eval` before switching.
+- wire-pod's built-in Bluetooth sign-in hangs, or crashes `vic-switchboard` (fault 913), on WireOS 3.0.2: sign robots in with the browser page.
 
 ## Legal
 

@@ -9,7 +9,7 @@ Status: **in progress**: no audio leaves our own devices (voice goes to our own 
 | Risk | Why | Fix |
 |---|---|---|
 | Shared SSH root key | Every unlocked Vector accepts the same public `ssh_root_key`. Anyone on the same network who has it gets root. | Add your own key, then remove the shared one (see below). |
-| Unauthenticated web servers | WireOS runs a settings server on `:8080` (wake word, CPU profile, auto-update opt-out) and a demo page on `:8888`. Assume anyone on the LAN can use them. | Keep the bot on a trusted network. Consider a guest/IoT VLAN. |
+| Unauthenticated web servers | WireOS runs a settings server on `:8080` (wake word, CPU profile, auto-update opt-out) and a demo page on `:8888`. Assume anyone on the LAN can use them. | Keep the bot on a trusted network. Consider a guest/IoT VLAN. On the tailnet, access rules decide who reaches them ([06](06-session-plan-llm-over-tailscale.md#6-tailnet-access-rules)). |
 | Firmware over plain HTTP | OTAs come from `http://ota.pvic.xyz/...` and the web setup's `:8000` server, unencrypted. | Flash only on a trusted network. Optionally download the OTA, check its hash, and serve it locally (see [04](04-flashing-and-deploying.md)). |
 | Auto-updates | The bot can pull new WireOS builds automatically. | Decide whether you want this. You can opt out in the `:8080` settings page. |
 | No WPA3 | WireOS's Wi-Fi stack can't connect to SAE/WPA3 networks. | Use WPA2 (or WPA2/WPA3 mixed mode). |

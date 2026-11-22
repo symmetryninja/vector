@@ -48,7 +48,7 @@ The details and pitfalls are in [docs/03](docs/03-voice-and-ai.md).
   4. [Flashing and deploying without the website](docs/04-flashing-and-deploying.md)
   5. [Tailscale](docs/05-tailscale.md): the experiment, and why not Funnel
   6. [Voice and LLM over Tailscale, permanently](docs/06-session-plan-llm-over-tailscale.md): how the server and robot are set up, the access rules, and what went wrong
-- [justfile](justfile): commands for all of the above, grouped (`stack`, `robot`, `privacy`, `wifi`, `flash`, `wire-pod`, `ollama`, `tailscale`).
+- [justfile](justfile): commands for all of the above, grouped (`robot`, `privacy`, `wifi`, `flash`, `wire-pod`, `llm`, `server`, `tailscale`, plus `stack` and `ollama` for the older desktop setup).
 - [wire-pod/run.sh](wire-pod/run.sh): creates the wire-pod container on a desktop (rootful Podman, host networking).
 - [wire-pod/server/](wire-pod/server/): wire-pod as a systemd service on a server: Quadlet unit, tailnet-only firewall rule, certificate renewal, and the start script that keeps its settings.
 - [llm/](llm/): the small LLM as a systemd service, and a script that tests any model on wire-pod's real prompt.
