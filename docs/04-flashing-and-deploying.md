@@ -25,7 +25,7 @@ update-os http://<pc-ip>:8000/<file>.ota
 
 Serving it locally also means we can check the OTA's hash before flashing, instead of trusting a plain-HTTP download (see [01](01-security-check.md)).
 
-Planned: a `scripts/flash-ota.sh` that takes an OTA URL or file plus the bot's address, serves the file if needed, runs `update-os` over SSH, and waits for the reboot. The bot's address comes from `local/` or an argument, never hard-coded.
+Done as `just` recipes instead of a script: `just flash-url <url>` and `just flash-file <file.ota>` (serves it, prints its checksum, runs `update-os` over SSH). The bot's address comes from `local/.env`, never hard-coded. **After any OTA**, re-run `just ssh-key-install` and `just ts-install-boot`: both put files on the root filesystem, which an OTA replaces ([06](06-session-plan-llm-over-tailscale.md)).
 
 ## B. Deploy only the Vector software (`wire-os-victor`)
 

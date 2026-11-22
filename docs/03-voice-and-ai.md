@@ -25,7 +25,7 @@ Vector does wake-word detection on the robot (WireOS uses Picovoice Porcupine). 
 
 1. **Pick a host** for wire-pod: something that's always on, on the same network as Vector.
 2. **Install wire-pod** (wiki: Installation, "Other Linux"): `git clone` it, then `sudo STT=vosk ./setup.sh`, then `sudo ./setup.sh daemon-enable` to run it as a service.
-3. **Point WireOS at wire-pod.** To confirm: how WireOS finds its voice server. The wire-pod guide is written for stock "escape pod" firmware, which looks for a host called `escapepod.local`, so make sure nothing else on the network uses that name. Check WireOS's `:8080` page and the robot's server config before changing anything.
+3. **Point WireOS at wire-pod.** (Answered 2026-11-09: through `/data/data/server_config.json`, written by wire-pod's SSH bot setup; see Findings.) How WireOS finds its voice server: The wire-pod guide is written for stock "escape pod" firmware, which looks for a host called `escapepod.local`, so make sure nothing else on the network uses that name. Check WireOS's `:8080` page and the robot's server config before changing anything.
 4. **Authenticate the bot** with wire-pod (its setup page walks through this).
 5. **Add the AI provider** in wire-pod's web UI (API setup), and enable the intent graph for free-form conversation.
 6. Test, then tune the personality/prompt and add weather.
@@ -39,7 +39,7 @@ Vector does wake-word detection on the robot (WireOS uses Picovoice Porcupine). 
 | Ollama | no | knowledge graph only (per wiki) | Runs locally. Private, but needs a capable machine. |
 | Houndify | yes | no | Older option. |
 
-To confirm: whether newer wire-pod versions support more providers or OpenAI-compatible endpoints. If they do, other services could be used.
+Answered: wire-pod's **`custom`** provider takes any OpenAI-compatible endpoint (Ollama, llama.cpp's server, ...), with the intent graph and conversations. That's what's used now.
 
 ## Keep keys out of git
 
@@ -51,7 +51,7 @@ API keys are entered in wire-pod's web UI and stored on the wire-pod host, **not
 
 - WireOS (3.0.2.0) doesn't look for a local escape pod. Its server config, `/anki/data/assets/cozmo_resources/config/server_config.json`, points voice (`chipper`), settings (`jdocs`) and tokens (`tms`) at a **community-hosted server, `vicapi.pvic.xyz:8081`**. So after the wake word, audio goes to that server over the internet.
 - That server is reachable with a valid TLS certificate, but voice requests fail: the log shows `Got cloud error message type error`, then the "I don't know" animation. That's why he can't interact.
-- The file is on the read-only root (`/`), and an OTA would overwrite it. To confirm: the supported way to point WireOS at wire-pod (wire-pod's docs have a section for unlocked bots).
+- The file is on the read-only root (`/`), and an OTA would overwrite it. Answered below: wire-pod's SSH bot setup writes a config on `/data`, which survives OTAs.
 - WireOS's own settings page (`:8080`) covers wake word, sensitivity, CPU profile, auto-update, faces and some settings, but has no voice-server or AI option.
 - Running wire-pod at home would also keep his microphone audio on the local network (see [01](01-security-check.md)).
 
@@ -72,7 +72,7 @@ API keys are entered in wire-pod's web UI and stored on the wire-pod host, **not
 
 ### 2026-11-09: AI conversation with a local open model
 
-Temporary test setup, until the models move to the home AI server (being containerised).
+First working version (superseded 2026-11-21 by the server setup in [06](06-session-plan-llm-over-tailscale.md)).
 
 - **Model:** [Qwen2.5 7B Instruct](https://ollama.com/library/qwen2.5) (`qwen2.5:7b`, ~4.7 GB, **Apache-2.0**), served by **Ollama** on the same desktop as wire-pod.
   - Picked for its open licence, speed (~0.3 s per short answer on a 16 GB GPU once loaded, ~2 s for the first request) and good instruction following.

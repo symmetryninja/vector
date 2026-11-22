@@ -2,7 +2,7 @@
 
 Goal: confirm the robot is running only what WireOS ships, and close the obvious holes that come with an unlocked bot.
 
-Status: **in progress**: no audio leaves the house (voice goes to our own wire-pod), auto-updates off. Still to do: replace the shared SSH key, router rule, full checklist.
+Status: **in progress**: no audio leaves our own devices (voice goes to our own wire-pod, over the tailnet), auto-updates off, and the shared SSH key is replaced by our own (2026-11-21, `just ssh-key-install`; see [06](06-session-plan-llm-over-tailscale.md)). Still to do: router rule, full checklist.
 
 ## Known risks of an unlocked WireOS bot
 
@@ -44,7 +44,7 @@ All read-only unless noted. Run over SSH (`ssh -i <key> root@<vector-ip>`; older
 2. Copy the public key to the bot and add it to `/root/.ssh/authorized_keys`. The root filesystem may be read-only; WireOS has `mrw` (= `mount -o rw,remount /`).
 3. Check you can log in with the new key **before** removing anything.
 4. Remove the shared key's line from `authorized_keys`.
-5. To confirm on the robot: whether an OTA update restores the shared key. If it does, repeat after each update.
+5. ✅ Done 2026-11-21 with `just ssh-key-install` (checks with `just ssh-key-check`). The key file is `/etc/ssh/authorized_keys` on the read-only root, which an OTA replaces, so an OTA brings the shared key back: re-run it after each update.
 
 ## Findings
 

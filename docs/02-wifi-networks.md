@@ -2,7 +2,7 @@
 
 Goal: let Vector join more than one known network (for example home and a second location) without re-running web setup.
 
-Status: **not started**. Saved networks already persist (three found). Adding one: `just wifi-add`.
+Status: **done** (2026-11-22). He keeps every network he's been given (four saved, including a phone hotspot for the away-from-home test) and connects to whichever is around. Adding one: `just wifi-add`; listing: `just wifi-list`.
 
 ## Background
 
@@ -16,7 +16,7 @@ Status: **not started**. Saved networks already persist (three found). Adding on
 1. Look at how the current network is stored (read-only):
    - `connmanctl services`: networks seen, `*A` = autoconnect, `*O` = online
    - `connmanctl config <service> --help` and the service list
-   - Find ConnMan's storage directory. To confirm on the robot: likely under `/data/lib/connman` or `/var/lib/connman`, with one folder per saved network.
+   - ConnMan's storage directory is **`/data/lib/connman`**, one `wifi_<id>_managed_psk` folder per saved network (confirmed 2026-11-22). It's on `/data`, so saved networks survive reboots and OTAs; they go only if removed (`connmanctl config <service> --remove`) or `/data` is wiped.
 2. Add a second network one of two ways:
    - **Interactive:** `connmanctl` → `agent on` → `scan wifi` → `services` → `connect <service>`. ConnMan saves it and should autoconnect later.
    - **Provisioning file:** a ConnMan `.config` file in its storage directory, one `[service_*]` section per network:

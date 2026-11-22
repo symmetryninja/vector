@@ -13,15 +13,21 @@ Image=ghcr.io/kercre123/wire-pod:main
 # Host networking: wire-pod binds 80 (robot's /ok check) and 443 (voice), writes its own address
 # into the robot's config, and reaches an LLM on the server's localhost.
 Network=host
-# wire-pod ignores SIGTERM as PID 1; an init process lets it stop cleanly.
-PodmanArgs=--init
+# --init: wire-pod ignores SIGTERM as PID 1. AppArmor: Podman's default container profile plus
+# D-Bus to BlueZ only (apparmor/wire-pod-bluetooth), for Bluetooth sign-in from the server.
+PodmanArgs=--init --security-opt apparmor=wire-pod-bluetooth
 Environment=WIREPOD_DATA_DIR=/data
 Environment=WEBSERVER_PORT=@WEB_PORT@
+# wire-pod's web guard (against DNS rebinding) refuses full domain names unless listed:
+# without this the web UI at the server's MagicDNS name says "forbidden host".
+Environment=WIREPOD_ALLOWED_HOSTS=@TS_NAME@
 Volume=@DIR@/data:/data
 Volume=@DIR@/data/images:/images
 # Run from /data/chipper so settings are saved to disk (see run-chipper.sh for why).
 Volume=@DIR@/run-chipper.sh:/run-chipper.sh:ro
 Exec=/run-chipper.sh
+# Bluetooth sign-in from the server: wire-pod talks to the host's BlueZ over the system D-Bus.
+Volume=/run/dbus/system_bus_socket:/run/dbus/system_bus_socket
 HealthCmd=curl -fsS http://127.0.0.1:@WEB_PORT@/ok
 HealthInterval=60s
 

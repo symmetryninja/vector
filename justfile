@@ -83,6 +83,27 @@ restart-robot:
 reboot:
     -{{ssh}} 'systemctl reboot'
 
+# Replace the SSH key every unlocked bot shares with your own (generates one if missing). Backs up the old file on /data
+[group('privacy')]
+ssh-key-install newkey=(home_directory() / ".ssh/vector_ed25519"):
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -f "{{newkey}}" ] || ssh-keygen -q -t ed25519 -N '' -C vector-owner -f "{{newkey}}"
+    pub="$(cat "{{newkey}}.pub")"
+    {{ssh}} "cp -n /etc/ssh/authorized_keys /data/etc/authorized_keys.shared-backup; mount -o rw,remount / && grep -qF '$pub' /etc/ssh/authorized_keys || echo '$pub' >> /etc/ssh/authorized_keys; mount -o ro,remount /"
+    ssh -i "{{newkey}}" -o IdentitiesOnly=yes -o BatchMode=yes root@{{vector_host}} true || { echo "new key doesn't work; shared key left in place"; exit 1; }
+    {{ssh}} "mount -o rw,remount / && echo '$pub' > /etc/ssh/authorized_keys.new && mv /etc/ssh/authorized_keys.new /etc/ssh/authorized_keys && chmod 600 /etc/ssh/authorized_keys; mount -o ro,remount /"
+    echo "Only {{newkey}} works now. Set VECTOR_KEY={{newkey}} in local/.env. (An OTA restores the shared key.)"
+    just ssh-key-check "{{newkey}}"
+
+# Check that the shared key is refused and yours works: just ssh-key-check ~/.ssh/vector_ed25519 [shared-key]
+[group('privacy')]
+ssh-key-check newkey=vector_key shared=(home_directory() / ".ssh/vector_private_key"):
+    #!/usr/bin/env bash
+    o="-o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=8 -o PubkeyAcceptedAlgorithms=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa"
+    if [ -f "{{shared}}" ]; then ssh -i "{{shared}}" $o root@{{vector_host}} true 2>/dev/null && echo "shared key: STILL WORKS" || echo "shared key: refused"; fi
+    ssh -i "{{newkey}}" $o root@{{vector_host}} true 2>/dev/null && echo "your key: works" || echo "your key: FAILS"
+
 # Show Vector's IP, firmware and WireOS settings page
 [group('robot')]
 info:
@@ -245,7 +266,7 @@ wirepod-setup-bot:
     done
     echo "Next: sign Vector in over Bluetooth (the address on his screen)."
 
-# Sign Vector in over the wire-pod server's own Bluetooth (no setup website). Needs Vector in Bluetooth range of the server; works from any machine that can reach wire-pod's UI
+# EXPERIMENTAL: sign Vector in over the wire-pod server's own Bluetooth. On WireOS 3.0.2 it crashes vic-switchboard (fault 913); use the browser page for now (docs/06 section 5)
 [group('wire-pod')]
 wirepod-ble-signin name="Vector":
     #!/usr/bin/env bash
@@ -338,8 +359,11 @@ server-install:
     sudo sed -i 's/tcp dport { 80, 443, [0-9]* }/tcp dport { 80, 443, {{wirepod_web_port}} }/' "$dir/wire-pod.nft"
     # The image creates an empty apiConfig.json, which wire-pod can't parse ("Service must be vosk or whisper")
     sudo test -s "$dir/data/chipper/apiConfig.json" || echo '{}' | sudo tee "$dir/data/chipper/apiConfig.json" >/dev/null
+    sudo install -m 644 wire-pod/server/apparmor/wire-pod-bluetooth /etc/apparmor.d/wire-pod-bluetooth
+    sudo apparmor_parser -r /etc/apparmor.d/wire-pod-bluetooth
+    ts_name="$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')"
     sudo mkdir -p /etc/containers/systemd
-    sed -e "s#@DIR@#$dir#g" -e "s#@WEB_PORT@#{{wirepod_web_port}}#g" wire-pod/server/wire-pod.container | sudo tee /etc/containers/systemd/wire-pod.container >/dev/null
+    sed -e "s#@DIR@#$dir#g" -e "s#@WEB_PORT@#{{wirepod_web_port}}#g" -e "s#@TS_NAME@#$ts_name#g" wire-pod/server/wire-pod.container | sudo tee /etc/containers/systemd/wire-pod.container >/dev/null
     printf '[Unit]\nDescription=Renew wire-pod Tailscale certificate\n\n[Service]\nType=oneshot\nExecStart=%s/cert.sh\n' "$dir" | sudo tee /etc/systemd/system/wire-pod-cert.service >/dev/null
     printf '[Unit]\nDescription=Renew wire-pod Tailscale certificate weekly\n\n[Timer]\nOnCalendar=weekly\nRandomizedDelaySec=6h\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n' | sudo tee /etc/systemd/system/wire-pod-cert.timer >/dev/null
     sudo systemctl daemon-reload

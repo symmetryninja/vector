@@ -1,128 +1,137 @@
-# 6. Planned session: Vector's voice and LLM over Tailscale, permanently
+# 6. Vector's voice and LLM over Tailscale, permanently
 
-Status: **in progress** (2026-11-21). Server side done: wire-pod and a small LLM run on the model server, tailnet-only. Robot side (steps 1, 4–8) next.
+Status: **works** (2026-11-21/22). wire-pod and a small LLM run on an always-on home server, reachable only over the tailnet. Vector runs Tailscale at boot and talks to wire-pod by its MagicDNS name. Voice and conversation work, including after a reboot. **Still to do:** the away-from-home test (phone hotspot).
 
-Background: [03 Voice and AI](03-voice-and-ai.md) (how wire-pod and the LLM fit together) and [05 Tailscale](05-tailscale.md) (the 2026-11-09 experiment that proved it works, and its caveats).
+Background: [03 Voice and AI](03-voice-and-ai.md) (how wire-pod and the LLM fit together) and [05 Tailscale](05-tailscale.md) (the 2026-11-09 experiment that proved it works, and why not Funnel).
+
+In this doc, `<server>.<tailnet>.ts.net` / `<server-ts-ip>` are the server's MagicDNS name and tailnet IP. Real values live in `local/.env` (`SERVER_TS_NAME`, `SERVER_TS_IP`, `VECTOR_HOST`).
 
 ## Goal
 
 Vector can talk to wire-pod and the LLM **from any network**. That keeps working **after reboots** of the robot and the server, and **nothing is exposed to the public internet**.
 
-Done when:
-- [x] wire-pod runs on the model server, starts at boot, and uses the server's own LLM endpoint.
+- [x] wire-pod runs on the server, starts at boot, and uses the server's own LLM endpoint.
 - [x] wire-pod's ports are reachable from the tailnet and localhost only, not the LAN.
-- [ ] wire-pod presents a Tailscale (Let's Encrypt) certificate for the server's MagicDNS name, renewed automatically.
-- [ ] Tailscale on Vector starts at boot from `/data`, as a tagged node, and survives a robot reboot.
-- [ ] Vector resolves the server's MagicDNS name after a reboot.
-- [ ] Tailnet access rules: Vector can reach only wire-pod's ports (443 voice, 80 check). Only our own devices can reach Vector's SSH.
-- [ ] Vector's shared SSH key is replaced by our own.
-- [ ] Voice and conversation work at home **and** on another network (e.g. phone hotspot).
-- [ ] The desktop wire-pod and Ollama are retired (or kept as a documented fallback).
-- [ ] Docs, `justfile` and HISTORY updated.
+- [x] wire-pod presents a Tailscale (Let's Encrypt) certificate for the server's MagicDNS name, renewed weekly.
+- [x] Tailscale on Vector starts at boot from `/data`, as a tagged node, and survives a robot reboot.
+- [x] Vector resolves the server's MagicDNS name after a reboot.
+- [x] Tailnet access rules: Vector can reach only wire-pod's ports (443 voice, 80 check).
+- [x] Vector's shared SSH key is replaced by our own.
+- [x] Voice and conversation work at home, over the tailnet, and after a reboot.
+- [ ] Voice and conversation work on another network (phone hotspot).
+- [x] The desktop wire-pod and Ollama are retired (kept documented in 03 as the first version).
 
 ## Architecture
 
 ```
-Vector ──(tailnet, WireGuard)──► model server
-  vic-cloud                        wire-pod  :443 voice (Tailscale cert), :80 check
-  tailscaled (from /data)          LLM server (OpenAI-compatible, localhost only)
-                                   tailscaled + cert renewal timer
+Vector ──(tailnet, WireGuard)──► server
+  vic-cloud                        wire-pod  :443 voice (Tailscale cert), :80 check, web UI
+  tailscaled (from /data)          small LLM (OpenAI-compatible, localhost only)
+  hosts entry for the server       nftables: wire-pod ports from lo + tailscale0 only
 ```
 
-- **wire-pod lives on the model server**, next to the LLM, so the LLM endpoint can stay bound to localhost (or the container network) and is never on the tailnet.
-- **The LLM is a small model of its own** ([Qwen3-4B-Instruct-2507](03-voice-and-ai.md#choosing-the-model-2026-11-21), llama.cpp, ~5 GB), always on. A shared big model would make Vector wait behind other jobs, and would change whenever the big model is switched.
-- **wire-pod runs with host networking but is firewalled to the tailnet.** It has no authentication, so an nftables rule (`wire-pod/server/wire-pod.nft`, loaded by the unit) lets only `lo` and `tailscale0` reach ports 80, 443 and its web UI. `just wirepod-lan open` lifts it for a robot's first sign-in on the LAN.
-- Considered and rejected: wire-pod stays on the desktop and reaches the LLM over the tailnet. It's more moving parts, the desktop has to be always on, and the LLM endpoint would be on the tailnet.
+- **wire-pod lives on the server**, next to the LLM, so the LLM stays on localhost and is never on the tailnet.
+- **The LLM is a small model of its own** ([Qwen3-4B-Instruct-2507](03-voice-and-ai.md#choosing-the-model-2026-11-21), llama.cpp, ~5 GB), always on. A shared big model would make Vector wait behind other jobs.
+- **wire-pod uses host networking but is firewalled to the tailnet.** It has no authentication, so `wire-pod/server/wire-pod.nft` lets only `lo` and `tailscale0` reach ports 80, 443 and its web UI. Vector uses Tailscale even at home; Tailscale finds the direct LAN path, so it costs nothing there.
 
-## Before the session (prerequisites)
+## How it was done
 
-- [x] The model server's LLM serves an OpenAI-compatible API (`/v1/chat/completions`). Model name: `small`.
-- [x] Ports **80 and 443** are free on the model server (a leftover reverse proxy had them), plus a free port for wire-pod's web UI (`WIREPOD_WEB_PORT`).
-- [x] HTTPS certificates are enabled in the tailnet.
-- [ ] Decide the robot's tailnet login: **interactive login URL** (no secret to store; used in the experiment) or **tagged pre-auth key** (stored only in `local/`, never in git). A tagged node is needed for tag-based access rules either way.
-- [ ] Vector is on, on the charger, and reachable (`just find`).
+Commands run on the server unless they say "robot". Settings come from `local/.env` (see `env.example`).
 
-## Session steps
-
-Each step ends with a check. Stop and roll back if a check fails.
-
-### 1. Lock down SSH first (~15 min)
-
-1. Generate our own key (kept outside the repo), add it to Vector's `authorized_keys`, and check we can log in with it.
-2. Remove the shared key. Set `VECTOR_KEY` in `local/.env`.
-3. Check: login with the shared key fails, and login with ours works.
-4. Add recipes: `just ssh-key-install`, `just ssh-key-check`.
-
-### 2. wire-pod and the LLM on the model server ✅ (2026-11-21)
-
-On the server, with this repo cloned and `local/.env` set (`WIREPOD_SYSTEMD=true`, `WIREPOD_WEB_PORT`, `LLM_MODEL`, `LLM_ENDPOINT`):
+### 1. The LLM and wire-pod on the server
 
 1. LLM: `just llm-install` (llama.cpp + Qwen3-4B-Instruct-2507 on `127.0.0.1:8085`), or point `LLM_ENDPOINT` at an OpenAI-compatible server you already run. Check: `just llm-test`, `just llm-eval 3`.
-2. wire-pod: `just server-install` (Quadlet, firewall, weekly cert timer), then `just wirepod-init` and `just wirepod-ai`.
-3. Check: `just wirepod-status` shows 443 and the UI port held by wire-pod, `just wirepod-lan` says closed, and `just wirepod-ai-show` shows the model.
+2. wire-pod: `just server-install` (Quadlet unit, firewall rule, AppArmor profile, weekly cert timer), then `just wirepod-init` and `just wirepod-ai`. Set `WIREPOD_SYSTEMD=true` so the `wirepod-*` recipes use systemctl.
+3. Check: `just wirepod-status` (443 and the UI port held by wire-pod), `just wirepod-lan` (closed), `just wirepod-ai-show`.
 
-Two bugs in wire-pod's container image, worked around by `server-install` (found 2026-11-21):
-- **Settings lost on every restart.** The image keeps its config files in the image and symlinks them into `/data`, but wire-pod saves them by writing a temp file and renaming it, which replaces the symlink with a file inside the container. Quadlet recreates the container on each start, so the settings and robot registrations vanished. `wire-pod/server/run-chipper.sh` starts wire-pod from `/data/chipper` instead, so it writes straight to disk.
-- **First-time setup fails with "Service must be vosk or whisper".** The entrypoint creates an empty `apiConfig.json`, which wire-pod can't parse, so it never loads its speech settings; restarting doesn't help. Seeding the file with `{}` fixes it. (Probably what was behind the "restart once" trick in [03](03-voice-and-ai.md).)
-- Also: wire-pod ignores SIGTERM as PID 1, so the unit uses `--init` to stop cleanly.
+Problems in wire-pod's container image, all handled by `server-install`:
+- **Settings lost on every restart.** The image keeps its config files in the image and symlinks them into `/data`, but wire-pod saves by writing a temp file and renaming it, which replaces the symlink with a file inside the container. Quadlet recreates the container on each start, so settings and robot registrations vanished. `wire-pod/server/run-chipper.sh` starts wire-pod from `/data/chipper`, so it writes straight to disk.
+- **First-time setup fails with "Service must be vosk or whisper".** The entrypoint creates an empty `apiConfig.json`, which wire-pod can't parse, so it never loads its speech settings, and restarting doesn't help. Seeding the file with `{}` fixes it. (Probably what was behind the "restart once" trick in [03](03-voice-and-ai.md).)
+- **"forbidden host"** when opening the web UI by MagicDNS name: wire-pod's guard against DNS rebinding only accepts IPs, single-word and `.local`/`.lan`-style names. The unit sets `WIREPOD_ALLOWED_HOSTS` to the server's tailnet name; other names are still refused.
+- wire-pod ignores SIGTERM as PID 1, so the unit uses `--init`.
+- If the server's LLM sits behind a proxy, make sure it **streams**: wire-pod speaks sentence by sentence as text arrives.
 
-### 3. Tailscale certificate for wire-pod (~20 min)
+### 2. Replace the shared SSH key (robot)
 
-1. `tailscale cert` for the server's MagicDNS name, written into wire-pod's `certs/` volume (back up the self-signed pair as `*.selfsigned-lan`).
-2. A **systemd timer** (weekly) that runs `tailscale cert` and restarts wire-pod only if the cert changed.
-3. Check: `openssl s_client -connect <name>:443` shows the Let's Encrypt cert and `Verify return code: 0`.
-4. Add recipes: `just ts-cert`, `just ts-cert-status`.
+Every unlocked bot accepts the same publicly known key, in `/etc/ssh/authorized_keys` (read-only root, restored by an OTA).
 
-### 4. Point Vector at the new wire-pod (~20 min)
+- `just ssh-key-install` generates `~/.ssh/vector_ed25519`, adds it, checks it works, then removes the shared key (backup: `/data/etc/authorized_keys.shared-backup`). `just ssh-key-check` confirms the shared key is refused.
+- Set `VECTOR_KEY` to the new key. After any OTA, run it again.
 
-1. `just wirepod-setup-bot` **from the model server** (writes Vector's config with the server's LAN IP, and resets his sign-in).
-2. Sign Vector in over Bluetooth. Optionally try wire-pod's built-in BLE pairing to avoid the third-party page, which needs the server's Bluetooth exposed to the container.
-3. Check: a voice command works on the LAN.
+### 3. Tailscale at boot (robot)
 
-### 5. Tailscale on Vector, at boot (~45 min; the unknown part)
+WireOS has **no supported hook that runs scripts from `/data` at boot**. `/data/wired/mods` holds settings for WireOS's own daemon, not scripts. So two small systemd units go on the root filesystem, and everything they run stays on `/data`. `just ts-install-boot` installs them; re-run it after an OTA (auto-updates are off).
 
-1. Find a boot hook that lives on `/data` and survives OTAs:
-   - check whether WireOS runs anything from `/data/wired/mods` or another `/data` path at boot
-   - otherwise a unit in `/etc/systemd/system` (root fs, so it needs re-applying after any OTA; auto-updates are off)
-2. The boot script starts `tailscaled` (memory-capped, as in the experiment), then:
-   - bind-mounts a hosts file with the server's MagicDNS name → tailnet IP over `/etc/hosts`
-   - restarts `anki-robot.target` once Tailscale is up, so `vic-cloud` connects
-3. `tailscale up --hostname=vector --advertise-tags=tag:vector --netfilter-mode=off --accept-dns=false --accept-routes=false`
-4. Turn off key expiry for the `vector` node, or rely on the tag.
-5. Add recipes: `just ts-install-boot`, `just ts-remove-boot`.
-6. Check: **reboot Vector**, then `just ts-status` shows him online, without logging in.
+- `vector-tailscaled.service` runs `/data/tailscale/tailscaled` (memory-capped: `MemoryMax=96M`, `GOMEMLIMIT=48MiB`). The node state on `/data` reconnects it by itself, no login needed. If an earlier `tailscale down` is saved in the state, run `tailscale up` once.
+- `vector-hosts.service` bind-mounts `/data/tailscale/hosts` (his own hosts file plus `<server-ts-ip> <server>.<tailnet>.ts.net`) over `/etc/hosts` before the robot software starts. His DNS can't resolve `.ts.net` names.
+- **Gotcha:** the first version used `ConditionPathExists=/data/tailscale/hosts`. `/data` is an encrypted volume that wasn't readable yet when systemd checked, so the unit was skipped at boot. Vector couldn't resolve the server and sat on his loading screen. The unit now waits up to 60 s for the file.
+- WireOS reboots him **every night** (`rebooter.sh`, between 1 and 5 am once he's been up 4 hours), so boot-time start really matters.
+- Cost: `tailscaled` uses ~25–30 MB of his ~474 MB RAM.
 
-### 6. Switch Vector to the tailnet name (~15 min)
+### 4. Certificate and pointing Vector at the server (no LAN step needed)
 
-1. `just ts-use-tailnet <name> <tailnet-ip>` (appends the Let's Encrypt chain, writes the config, and keeps the `.lan-backup` files).
-2. Check: voice works. Then **reboot Vector** and check it again.
+Order matters, and it avoids ever opening wire-pod to the LAN:
 
-### 7. Tailnet access rules (~20 min)
+1. `just wirepod-ts-cert`: wire-pod presents a Let's Encrypt cert for `<server>.<tailnet>.ts.net` (its own LAN cert is kept as `*.selfsigned-lan`). The cert file holds the full chain.
+2. `just wirepod-setup-bot` (over the tailnet is fine: wire-pod SSHes out to the robot). It copies wire-pod's cert file to the robot as `/data/data/wirepod-cert.crt`, and with it the chain, so renewals keep working. It always writes the server's **LAN IP** into the robot's `server_config.json`, and it resets his sign-in and reboots him.
+3. `just ts-use-tailnet <server>.<tailnet>.ts.net <server-ts-ip>`: rewrites `server_config.json` to the name (backup: `.lan-backup`) and restarts the robot software.
+4. Sign him in over Bluetooth (next section).
 
-1. In the Tailscale policy:
-   - `tag:vector` → model server, ports 443 and 80 only
-   - our devices → `tag:vector`, port 22 only, plus his `:8080` settings page if wanted
-2. Check from Vector: the model server's 443 is reachable, and other tailnet hosts aren't. Check from a non-admin device: Vector isn't reachable.
+Check: from the robot, `curl --cacert /data/data/wirepod-cert.crt https://<server>.<tailnet>.ts.net/` verifies (`ssl_verify_result` 0).
 
-### 8. Away-from-home test (~15 min)
+### 5. Bluetooth sign-in
 
-1. Move Vector to another network (phone hotspot) using `just wifi-add` beforehand.
-2. Check: voice and conversation work. `tailscale ping vector` shows a DERP or direct path.
-3. Note latency and any dropouts.
+What worked: **the browser page** his screen shows (`wp.pvic.xyz`, a copy of DDL's BLE setup page) in Chrome with Web Bluetooth. That page only sends a dummy login to its own server; the real sign-in is between Vector and our wire-pod.
 
-### 9. Wrap up (~15 min)
+What was tried first: **wire-pod's built-in Bluetooth sign-in from the server**, so no third-party page is needed. On Linux it uses the host's BlueZ over the system D-Bus, so the unit mounts `/run/dbus/system_bus_socket` and runs under `wire-pod/server/apparmor/wire-pod-bluetooth`: Podman's default container profile plus D-Bus to BlueZ only (the default profile blocks D-Bus). Scanning and pairing work (**double-press Vector's back button** to show the PIN). But on WireOS 3.0.2:
 
-- Retire the desktop's wire-pod and Ollama (`just down`), or document them as a fallback.
-- Update the docs (01, 03, 05, this file → "done"), the `justfile`, the README and HISTORY. Commit.
+- **wire-pod's own page hangs.** After the PIN it asks for the robot's status, and for an unlocked robot it then asks for his Wi-Fi IP over Bluetooth with **no timeout**. Vector never answers, so that request holds wire-pod's Bluetooth lock forever. Vector gives up, and every later Bluetooth request (including the page's "Checking if wire-pod can use BLE directly...") hangs until wire-pod restarts. Found with a Go stack dump (`kill -QUIT` the `chipper` process).
+- **`just wirepod-ble-signin`** skips that call (init, scan, connect, PIN, auth only). It got further, but **crashed `vic-switchboard` on the robot** straight after the encrypted channel was set up and two status requests were answered. His fault handler restarted the robot software with **fault code 913**. The crash dump is in `/data/data/com.anki.victor/cache/crashDumps/`. Not investigated further; possibly a protocol mismatch between wire-pod's `vector-bluetooth` library and WireOS's switchboard.
+
+So for now: sign in with the browser page. The built-in route needs the robot in Bluetooth range of the server, and is worth retrying with newer wire-pod/WireOS versions.
+
+### 6. Tailnet access rules
+
+Goal: Vector can reach only wire-pod (443 voice, 80 check) on the server. Your own devices keep full access, including SSH to Vector, and the server can still reach Vector (wire-pod connects back to him on 443 and SSHes in for setup).
+
+```json
+{
+  "tagOwners": { "tag:vector": ["autogroup:admin"] },
+  "grants": [
+    { "src": ["autogroup:member"], "dst": ["*"], "ip": ["*"] },
+    { "src": ["tag:vector"], "dst": ["<server-ts-ip>"], "ip": ["tcp:443", "tcp:80"] }
+  ]
+}
+```
+
+Then tag the robot (admin console → Machines → `vector` → Edit ACL tags → `tag:vector`). Tagged nodes don't expire.
+
+Gotchas:
+- The default policy's allow-all rule has source `*` (everyone), which **includes tagged devices**. Change it to `autogroup:member`, or the tag restricts nothing. We found this by testing: before the change, Vector could still reach Home Assistant.
+- The allow-all rule's **destination must stay `*`**. "Members' devices" doesn't include tagged devices, so your machines (and wire-pod) would lose access to Vector.
+- If you've **shared** a device with someone outside the tailnet, they're not members. Check they can still reach it, and give them their own rule if not.
+- On the free plan the admin console may only offer the visual editor. Tags are created there, and a plain IP works as a destination, so no `hosts` entry is needed.
+- Don't tag the server: a tagged device loses the access it had as your device for connections it starts (wire-pod → Vector, anything else the server reaches).
+
+Check from the robot: `curl` the server's 443 and 80 (answer), and the server's other ports and other tailnet devices (no answer). BusyBox `nc` on the robot can't do port checks; use `curl`.
+
+### 7. Reboot test
+
+`just reboot`. One minute later, with nothing done by hand: `vector-tailscaled` and `vector-hosts` active, the hosts entry present, `vic-cloud` connected to wire-pod over the tailnet, and voice and conversation working. The first command after a reboot took a few seconds (probably Tailscale finding the direct path and the first TLS connection); later ones are quick.
+
+### 8. Away-from-home test (to do)
+
+1. Add the network beforehand: `just wifi-add` (interactive `connmanctl`). Saved networks live in `/data/lib/connman/`, so they survive reboots and OTAs.
+2. Set `VECTOR_HOST` to his tailnet name so the `just` robot recipes work on any network.
+3. Move Vector to the phone hotspot. Check: voice and conversation work, and `tailscale ping vector` shows a direct or relay (DERP) path. Note the latency.
 
 ## Rollback
 
-At any point: `just ts-use-lan` (restores Vector's LAN config and cert), then `just ts-remove-boot`, and restart the desktop wire-pod with `just up`. The `.lan-backup` and `*.selfsigned-lan` files must exist before step 6.
+`just ts-use-lan` (restores the `.lan-backup` config), `just ts-remove-boot`, and `just wirepod-lan open` on the server, or point him at another wire-pod with `just wirepod-setup-bot`.
 
 ## Open questions
 
-- Is there a WireOS-supported boot hook on `/data`? (Ask in the os-vector community if it's not obvious from the source.)
-- How do battery, temperature and CPU look with `tailscaled` running all day?
-- Does `vic-cloud` reconnect by itself if Tailscale starts after it, or does the boot script have to restart `anki-robot.target`?
-- What does wire-pod do when the LLM is slow or down: does Vector time out gracefully?
-- Is the face-enrolment problem (doc 03) still present after the move? It's unrelated, but worth a retry while he's on the charger.
+- Battery, temperature and CPU with `tailscaled` running all day.
+- What wire-pod does when the LLM is slow or down: does Vector time out gracefully?
+- Why `vic-switchboard` crashes on wire-pod's built-in Bluetooth sign-in (fault 913), and whether a self-hosted copy of the browser setup page is the better long-term route.
+- The face-enrolment problem from doc 03.

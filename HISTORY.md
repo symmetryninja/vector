@@ -60,4 +60,15 @@ Technical detail lives in [docs/](docs/README.md). No keys, passwords, network n
 - Moved Vector's brain to the always-on home server. wire-pod (his voice server) now runs there as a system service, and only devices on the tailnet can reach it; the home network can't, because wire-pod has no login.
 - Gave him a small language model of his own (Qwen3-4B-Instruct-2507) instead of sharing the server's big one, so he never waits behind other jobs. Picked it by testing two small models on wire-pod's real prompt: the newer, smaller one made fewer mistakes with Vector's animation commands and was just as fast. The test script is in the repo, so anyone can check their own model.
 - Found and worked around two bugs in wire-pod's container image: it forgot its settings on every restart, and its first-time setup could never finish. The second is probably what was behind the "restart once" trick from 2026-11-09.
-- New `just` recipes to install all of this on a server. Next: the robot side, so Tailscale starts on Vector at boot.
+- New `just` recipes to install all of this on a server.
+- Replaced the SSH key that every unlocked Vector shares with our own. The shared key no longer gets in.
+- Made Tailscale start on Vector at every boot. WireOS has no supported way to run things from his data partition at boot, so two tiny services on his system partition start it; they need re-adding after a firmware update (auto-updates are off).
+- Pointed Vector at the new server by its tailnet name, with a proper certificate, without ever opening wire-pod to the home network.
+- First reboot after that: he got stuck on his loading screen. The service that teaches him the server's name ran before his encrypted data partition was readable and quietly skipped itself. Fixed by making it wait; he now comes back by himself.
+- Tried signing him in using the server's own Bluetooth, so no outside website is involved. Pairing works, but wire-pod's page hangs, and a cut-down version crashed his Bluetooth service (fault 913). Signed him in with the usual browser page instead, which worked. Notes for a future attempt are in doc 06.
+- Voice and conversation work over the tailnet, and again after a reboot with nothing done by hand.
+
+## 2026-11-22
+
+- Set up tailnet access rules: Vector is tagged and can only reach wire-pod on the server. Two gotchas worth knowing: the default "everyone" rule also covers tagged devices, so it has to become "members" for the tag to mean anything; and its destination must stay "all devices", or your own machines lose access to Vector.
+- He remembers four Wi-Fi networks now, including the phone hotspot, ready for the away-from-home test.

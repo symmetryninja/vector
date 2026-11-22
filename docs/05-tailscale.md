@@ -2,7 +2,7 @@
 
 Goal: Vector reaches our own wire-pod from any Wi-Fi network, without exposing wire-pod to the internet.
 
-Status: **experiment worked, then reverted to LAN (2026-11-09).** Tailscale is installed on Vector but not running. The permanent setup is planned as a session: [06](06-session-plan-llm-over-tailscale.md). Commands: `just ts-*`.
+Status: **permanent since 2026-11-21.** Tailscale starts on Vector at boot and his voice goes to wire-pod over the tailnet: see [06](06-session-plan-llm-over-tailscale.md). This doc keeps the 2026-11-09 experiment and the reasoning (why not Funnel). Commands: `just ts-*`.
 
 ## Feasibility (2026-11-09, read-only look)
 
@@ -58,19 +58,16 @@ To avoid a reboot leaving him voiceless, the experiment was rolled back the same
 - Robot: `server_config.json` and `wirepod-cert.crt` restored from `.lan-backup`, `/etc/hosts` overlay unmounted, `tailscale down`, transient unit stopped, `anki-robot.target` restarted.
 - Left in place on the robot: `/data/tailscale/` (binaries and node state, so it can rejoin without a new login). The node shows as offline in the tailnet admin.
 
-### Next: permanent, on the model server
+### Made permanent (2026-11-21)
 
-Full step-by-step plan: [06 Planned session](06-session-plan-llm-over-tailscale.md). Summary:
-
-
-Move wire-pod to the machine that will run the models (currently being containerised) and do the permanent version there:
+Done as planned below; what was actually done, and what went wrong, is in [06](06-session-plan-llm-over-tailscale.md). The plan was:
 1. Run wire-pod there (`wire-pod/run.sh`, plus boot-start via Quadlet/systemd), with the LLM endpoint on the same host.
 2. Get a `tailscale cert` for that host's MagicDNS name, and add renewal (timer) plus a wire-pod restart.
 3. Re-run wire-pod's SSH bot setup from the new host, then switch the robot's config to the new name.
 4. On the robot: start Tailscale and the hosts entry **at boot** from `/data` (find a WireOS-supported hook), with a tagged node and ACLs.
 5. Replace the shared SSH key first.
 
-### Caveats before making it permanent
+### Caveats before making it permanent (all handled in [06](06-session-plan-llm-over-tailscale.md))
 
 - **A reboot breaks voice right now:** the config file (on `/data`) points at the name, but Tailscale and the hosts entry are gone after a reboot. Either make both start at boot, or restore the `.lan-backup` files.
 - **Boot persistence** needs a hook on `/data`, since `/` is read-only and OTAs replace it. Open question: is there a WireOS-supported startup hook (e.g. under `/data/wired/mods`)?
