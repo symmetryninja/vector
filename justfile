@@ -245,6 +245,37 @@ wirepod-setup-bot:
     done
     echo "Next: sign Vector in over Bluetooth (the address on his screen)."
 
+# Sign Vector in over the wire-pod server's own Bluetooth (no setup website). Needs Vector in Bluetooth range of the server; works from any machine that can reach wire-pod's UI
+[group('wire-pod')]
+wirepod-ble-signin name="Vector":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ui="{{wirepod_ui}}"
+    api() { curl -s -m "${2:-30}" "$ui/api-ble/$1"; }
+    # wire-pod's own page calls get_robot_status after the PIN, which for unlocked (WireOS) robots asks
+    # for his Wi-Fi IP over Bluetooth with no timeout and wedges wire-pod's Bluetooth until a restart.
+    # This does only what sign-in needs: init, scan, connect, PIN, auth.
+    if ! r=$(api init 15); then
+      echo "wire-pod's Bluetooth is stuck (no answer from init). Restart wire-pod (just wirepod-restart, on the server) and run this again."; exit 1
+    fi
+    echo "init: $r"
+    case "$r" in *success*) ;; *) exit 1;; esac
+    echo "scanning..."
+    scan=$(api scan 60)
+    id=$(printf '%s' "$scan" | python3 -c 'import json,sys; n=sys.argv[1].lower(); b=[x for x in json.load(sys.stdin) if n in x["name"].lower()]; print(b[0]["id"] if b else "")' "{{name}}")
+    [ -n "$id" ] || { echo "no robot named '{{name}}' found: $scan"; exit 1; }
+    echo "connecting to robot $id..."
+    r=$(api "connect?id=$id" 60); echo "connect: $r"
+    case "$r" in *success*) ;; *) exit 1;; esac
+    echo "Double-press Vector's back button: he shows a PIN on his screen."
+    read -rp "PIN: " pin
+    r=$(api "send_pin?pin=$pin" 60); echo "pin: $r"
+    case "$r" in *success*) ;; *) exit 1;; esac
+    echo "authenticating..."
+    r=$(api do_auth 120); echo "auth: $r"
+    api disconnect 15 >/dev/null || true
+    case "$r" in *success*) echo "Signed in. Try: Hey Vector, what time is it?";; *) exit 1;; esac
+
 # Connect wire-pod to an OpenAI-compatible LLM (llama.cpp server, Ollama, ...), with conversation on
 [group('wire-pod')]
 wirepod-ai model=llm_model endpoint=llm_endpoint:
