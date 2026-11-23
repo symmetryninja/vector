@@ -74,3 +74,7 @@ Technical detail lives in [docs/](docs/README.md). No keys, passwords, network n
 - He remembers four Wi-Fi networks now, including the phone hotspot, ready for the away-from-home test.
 - Away-from-home test: moved Vector to the phone's hotspot with the phone on mobile data. Tailscale reconnected on its own and found a direct path over the mobile network. "What time is it" and a question for the model both worked with no noticeable delay. Vector now works from anywhere with Wi-Fi, and nothing is open to the internet.
 - After coming home from the hotspot, his voice stopped working. His network manager had crashed while switching Wi-Fi, and on restart it switched Tailscale's network interface off and re-applied WireOS's firewall, which only lets traffic out over Wi-Fi. Fixed both: the network manager now leaves Tailscale alone, and the firewall lets his Tailscale traffic out (re-added automatically whenever the firewall reloads). Tested by restarting the network manager and reloading the firewall on purpose: the tailnet stayed up.
+
+## 2026-11-24
+
+- Planned (not started) letting Vector's voice assistant use tools, starting with Home Assistant, so he can answer things like "are the workshop lights off?". wire-pod can't do tool calls itself, so the plan is a small go-between service next to his model. Parked in the backlog as doc 07, with notes on recognising who's speaking.
