@@ -53,3 +53,8 @@ A `wifi.env.example` with placeholder values can live in the repo.
 - ConnMan's saved networks live in **`/data/lib/connman/`**, one `wifi_<mac>_<hex-ssid>_managed_psk/` folder per network. `/data` is the writable user partition; the root filesystem is read-only.
 - The bot already had **three saved networks**, two of them dating from 2021. So saved networks survive OTA updates and the unlock, and web setup **adds** a network rather than replacing the old ones.
 - `connmanctl` is installed, so adding another network is a quick `connmanctl` session while that network is in range.
+
+### 2026-11-24: each network is listed twice
+
+- `connmanctl services` lists every network once per Wi-Fi interface: `wlan0` (his real Wi-Fi) and `p2p0` (Wi-Fi Direct, switched off). The ids differ only in the interface MAC (`wifi_<mac>_<ssid-hex>_managed_psk`); the `p2p0` one has a `02:` locally-administered MAC.
+- Connecting to the `p2p0` id fails with `Error = connect-failed`, whatever the password. Use the id with `wlan0`'s MAC (`cat /sys/class/net/wlan0/address`). `just wifi-add "<part of name>"` now shows only those.

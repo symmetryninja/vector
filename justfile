@@ -163,11 +163,12 @@ wifi-list:
 wifi-add ssid="":
     #!/usr/bin/env bash
     set -euo pipefail
+    # Only wlan0's ids: each network is listed twice, and the p2p0 copy always fails with connect-failed.
     ssid={{quote(ssid)}}
     if [ -z "$ssid" ]; then
         echo "In connmanctl run: agent on / scan wifi / services / connect <wifi_...id> / quit"
     else
-        matches="$({{ssh}} 'connmanctl scan wifi >/dev/null; connmanctl services' | grep -iF -- "$ssid" || true)"
+        matches="$({{ssh}} 'connmanctl scan wifi >/dev/null; m=$(tr -d : </sys/class/net/wlan0/address); connmanctl services | grep "wifi_${m}_"' | grep -iF -- "$ssid" || true)"
         if [ -z "$matches" ]; then
             echo "No network matching '$ssid' in range (WPA3-only networks show but can't be joined)." >&2
             exit 1
