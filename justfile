@@ -158,10 +158,26 @@ autoupdate-on:
 wifi-list:
     {{ssh}} 'connmanctl services; echo; echo "saved:"; ls /data/lib/connman | grep ^wifi_ || true'
 
-# Add a Wi-Fi network interactively (agent on, scan wifi, services, connect <id>)
+# Add a Wi-Fi network interactively. Give part of its name to find its id: just wifi-add "Workshop"
 [group('wifi')]
-wifi-add:
-    @echo "In connmanctl run: agent on / scan wifi / services / connect <wifi_...id> / quit"
+wifi-add ssid="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ssid={{quote(ssid)}}
+    if [ -z "$ssid" ]; then
+        echo "In connmanctl run: agent on / scan wifi / services / connect <wifi_...id> / quit"
+    else
+        matches="$({{ssh}} 'connmanctl scan wifi >/dev/null; connmanctl services' | grep -iF -- "$ssid" || true)"
+        if [ -z "$matches" ]; then
+            echo "No network matching '$ssid' in range (WPA3-only networks show but can't be joined)." >&2
+            exit 1
+        fi
+        echo "$matches"
+        echo
+        echo "In connmanctl run: agent on, then one of:"
+        echo "$matches" | awk '{print "  connect " $NF}'
+        echo "then quit"
+    fi
     ssh -t {{ssh_opts}} root@{{vector_host}} connmanctl
 
 # ---------------------------------------------------------------------------
