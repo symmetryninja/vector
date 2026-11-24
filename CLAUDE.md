@@ -21,7 +21,8 @@ Guidance for Claude Code (and humans) working in this repo. It manages a real An
 - `/run/fault_code` is a **FIFO**. Never `cat` it, or the shell hangs.
 - BusyBox userland: limited `ls`, `stat` etc. Prefer simple commands.
 - Ask the owner before anything that resets onboarding, reboots him unexpectedly, or flashes firmware.
-- **Tailscale on the robot** runs from three small units on `/` (`vector-tailscaled`, `vector-hosts`, `vector-tailnet-fw`), installed by `just ts-install-boot`; it also adds `tailscale` to ConnMan's interface blacklist. An OTA removes them all, and restores the shared SSH key: after any OTA, re-run `just ts-install-boot` and `just ssh-key-install`.
+- **Tailscale on the robot** runs from three small units on `/` (`vector-tailscaled`, `vector-hosts`, `vector-tailnet-fw`), installed by `just ts-install-boot`; it also adds `tailscale` to ConnMan's interface blacklist. An OTA removes them all, and restores the shared SSH key: after any OTA, re-run `just ts-install-boot`, `just ssh-key-install` and `just logs-persist`.
+- **His system log survives reboots** (since 2026-11-24): `vector-journal` binds `/data/journal` over `/var/log/journal` (a tmpfs), 16 MB per boot, newest 10 boots. Read the last boot with `just logs-prev`, or `journalctl -D /var/log/journal ...` on the robot. Plain `journalctl -b -1` may miss it, since his machine-id is transient.
 - WireOS has its own firewall (`iptables.service`, default DROP, output only on `wlan0`/`lo`/`tether`). Anything new that must send on another interface needs an exception tied to `iptables.service`, like `vector-tailnet-fw`.
 - Set `VECTOR_HOST` to his tailnet name so robot recipes work on any network; `Vector.local` (mDNS) only works on the same LAN.
 

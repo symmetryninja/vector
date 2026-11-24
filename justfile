@@ -110,6 +110,40 @@ info:
     {{ssh}} 'echo "ip:       $(ip -4 -o addr show wlan0 | awk "{print \$4}")"; echo "firmware: $(cat /anki/etc/version)"; echo "kernel:   $(uname -r)"'
     @echo "settings: http://{{vector_host}}:8080"
 
+# Keep his system log across reboots: on /data, 16 MB per boot, newest 10 boots. Units on /: re-run after an OTA.
+[group('robot')]
+logs-persist:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{ssh}} 'mount -o rw,remount / && mkdir -p /etc/systemd/journald.conf.d && cat > /etc/systemd/journald.conf.d/vector-persistent.conf && mount -o ro,remount /' <<'CONF'
+    [Journal]
+    SystemMaxUse=16M
+    SystemMaxFileSize=4M
+    CONF
+    {{ssh}} 'mount -o rw,remount / && cat > /etc/systemd/system/vector-journal.service && mount -o ro,remount /' <<'UNIT'
+    [Unit]
+    Description=Keep the system journal on /data across reboots
+    RequiresMountsFor=/data
+    After=systemd-journald.service
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    # /var/log is a tmpfs; bind a /data folder over /var/log/journal and move the logs there.
+    # The machine-id is transient, so a boot may get its own folder: keep the newest 10.
+    ExecStart=/bin/sh -c 'for i in $(seq 60); do [ -d /data/lib/connman ] && break; sleep 1; done; mkdir -p /data/journal /var/log/journal; ls -1t /data/journal | tail -n +11 | while read d; do rm -rf "/data/journal/$$d"; done; mount --bind /data/journal /var/log/journal && journalctl --flush'
+    ExecStop=/bin/sh -c 'journalctl --relinquish-var; umount /var/log/journal'
+
+    [Install]
+    WantedBy=multi-user.target
+    UNIT
+    {{ssh}} 'mount -o rw,remount / && systemctl daemon-reload && systemctl enable vector-journal; mount -o ro,remount /; systemctl restart systemd-journald && systemctl restart vector-journal && journalctl --disk-usage && journalctl -D /var/log/journal --list-boots | tail -3'
+
+# His system log from the previous boot (needs logs-persist): just logs-prev 200
+[group('robot')]
+logs-prev lines="100":
+    {{ssh}} 'journalctl -D /var/log/journal -b -1 --no-pager -n {{lines}}'
+
 # ---------------------------------------------------------------------------
 # Privacy and updates
 
