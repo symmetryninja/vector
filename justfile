@@ -181,6 +181,22 @@ wifi-add ssid="":
     fi
     ssh -t {{ssh_opts}} root@{{vector_host}} connmanctl
 
+# Password is read locally (hidden) and sent over SSH stdin only; it's stored on Vector like ConnMan's own saved networks.
+# Save a Wi-Fi network with a ConnMan provisioning file, no connmanctl password prompt: just wifi-save "My SSID"
+[group('wifi')]
+wifi-save ssid:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ssid={{quote(ssid)}}
+    read -rsp "Password for '$ssid': " pass; echo
+    [ -n "$pass" ] || { echo "No password given." >&2; exit 1; }
+    slug="$(printf '%s' "$ssid" | tr -c 'A-Za-z0-9_-' '_')"
+    printf '[service_%s]\nType = wifi\nName = %s\nPassphrase = %s\n' "$slug" "$ssid" "$pass" \
+        | {{ssh}} "umask 077; cat > /data/lib/connman/wifi-$slug.config"
+    echo "Saved as /data/lib/connman/wifi-$slug.config. Remove that file to forget it."
+    echo "He joins it when in range and no other saved network is connected; to switch now:"
+    echo "  just ssh 'connmanctl connect <wlan0 id from: just wifi-add \"$ssid\">'"
+
 # ---------------------------------------------------------------------------
 # Flashing
 
