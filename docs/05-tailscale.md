@@ -97,3 +97,11 @@ Middle ground if needed: **node sharing** gives one specific other tailnet (e.g.
 
 - Tailscale's coordination server (run by Tailscale Inc.) sets up the connections but **can't see the traffic**: it's end-to-end encrypted WireGuard. For full self-hosting, Headscale can replace the coordination server.
 - If Vector only ever uses networks at places where a wire-pod also runs, Tailscale isn't needed.
+
+## Findings
+
+### 2026-11-24: tailnet stopped reaching him after switching Wi-Fi by hand
+
+- Moved him from the phone hotspot to a new network with `just wifi-save` + `connmanctl connect`. Afterwards Tailscale itself answered (`tailscale ping`, `--tsmp`) but nothing through the tunnel did (`tailscale ping --icmp`, SSH): the `tailscale0` interface or the firewall exception (`vector-tailnet-fw`) didn't survive this switch, unlike the 2026-11-22 cases.
+- A restart fixed it: he rejoined the new network by himself, with the tailnet, voice and firewall exception all working.
+- **Cause not found:** his journal isn't kept across reboots, so the logs from before the restart were gone. To confirm next time *before* restarting: `ip link show tailscale0` and `iptables -S OUTPUT | grep tailscale0` (needs a way in other than the tailnet, e.g. `Vector.local` on the same LAN).
